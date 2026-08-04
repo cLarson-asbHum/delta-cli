@@ -12,22 +12,28 @@
 #define DELTA_H
 
 #include <stdio.h>
+#include <stdint.h>
+
+union SerialLong {
+        uint64_t longVal;
+        uint8_t bytes[8];
+};
 
 // Indicates that a part of the previous will be moved to the specified index.
 // Moves can overlap with one another, which allows for deletions.
 struct MoveCommand
 {
-        unsigned long prevIndex; // Where the substring was in the previousSrc string
-        unsigned long curIndex;  // Where the substring is in the currentSrc string
-        unsigned long len;       // How long the substring
+        union SerialLong prevIndex; // Where the substring was in the previousSrc string
+        union SerialLong curIndex;  // Where the substring is in the currentSrc string
+        union SerialLong len;       // How long the substring
 };
 
 // Indicates that a specific symbol present in current was not present in
 // previous.
 struct AddCommand
 {
-        unsigned char symbol;
-        unsigned long curIndex; // Where the symbol is in the currentSrc string
+        uint8_t symbol;
+        union SerialLong curIndex; // Where the symbol is in the currentSrc string
 };
 
 enum CommandType
@@ -47,18 +53,24 @@ struct Command
         } command;
 };
 
+// Frees all memory associated with the command recursively. This includes pointer 
+// members (i.e. (struct Command).command). This returns the type member of the 
+// command.
+int freeCommand(struct Command *command);
+
 // Computes the largest block move, as described by procedure L in Tichy (page 8).
-// If there is not enough data, this returns `NULL` from stdio.
+// If either curMaxCount is 0, or prevStart is greater than or equal to prevLen,
+// this returns NULL.
 //
 // previousSrc  - pointer to the first byte the previous src
 // prevStart    - Index to start at in previous src
 // prevLen      - length of previous src
 // currentSrc   - pointer to the first byte of the prefix (start of L in Tichy)
 // curMaxCount  - maximum length of the prefix
-struct Command *nextLargestMove(const unsigned char *previousSrc,
-                                unsigned long prevStart, unsigned long prevLen,
-                                const unsigned char *currentSrc, 
-                                unsigned long curMaxCount);
+struct Command *nextLargestMove(const uint8_t *previousSrc,
+                                uint64_t prevStart, uint64_t prevLen,
+                                const uint8_t *currentSrc, 
+                                uint64_t curMaxCount);
 
 // Performs the operation specified by the command, outputing in the specified
 // buffer. This returns the number of bytes written as a result of command. If
@@ -73,16 +85,17 @@ struct Command *nextLargestMove(const unsigned char *previousSrc,
 //           command's domain will be overridden; all others are unmodified
 // outLen  - length of out, in number of chars
 // command - the patch command to apply and write to out
-int patchCommand(const unsigned char *previousSrc, unsigned long prevLen,
-                 unsigned char *out, unsigned long outLen, 
+int patchCommand(const uint8_t *previousSrc, uint64_t prevLen,
+                 uint8_t *out, uint64_t outLen, 
                  const struct Command *command);
 
 // Determines how many bytes this command changes in the output. For adds, it's
 // only one because only 1 symbol is added; for moves, it's equal to the `len` 
-// struct member.
+// struct member. If the type is garbage data, then this returns -1.
 int patchSizeOf(const struct Command *command);
 
-// Determines how many bytes are necessary to serialize the given command. 
+// Determines how many bytes are necessary to serialize the given command. If 
+// the type is garbage data, then this returns -1.
 int serialSizeOf(const struct Command *command);
 
 /* Writes the command as a series of bytes to the specified buffer, starting at
@@ -91,13 +104,13 @@ int serialSizeOf(const struct Command *command);
  * If the number of bytes written is less than `serialSizeOf(command)`, an
  * error occurred.
  *
- * buf     - pointer to first unsigned char in the to-serialize output
- * bufSize - length of the buffer array, in number of unsigned chars
+ * buf     - pointer to first uint8_t in the to-serialize output
+ * bufSize - length of the buffer array, in number of uint8_ts
  * i       - the first index to write to when serializing the command
  * command - what to serialize
  */
-int serializeCommand(unsigned char *buf, unsigned long bufSize,
-                     unsigned long i, const struct Command *command);
+int serializeCommand(uint8_t *buf, uint64_t bufSize,
+                     uint64_t i, const struct Command *command);
 
 /* Synthesizes a command from the given buffer, starting at the given index. This
  * is most useful when reading from a file. Parameter `destination` is used as
@@ -112,12 +125,12 @@ int serializeCommand(unsigned char *buf, unsigned long bufSize,
  * else is returned, an error has occurred (e.g. end of the buffer was reached),
  * the destination pointer is in an undefined state.
  *
- * buf     - pointer to first unsigned char in the serialized source
- * bufSize - length of the buffer array, in number of unsigned chars
+ * buf     - pointer to first uint8_t in the serialized source
+ * bufSize - length of the buffer array, in number of uint8_ts
  * i       - the first index to read when deserializing the command
  * destination - where the deserialized data will be written
  */
-int *deserializeCommand(const unsigned char *buf, unsigned long bufsize,
-                        unsigned long i, struct Command *destination);
+int *deserializeCommand(const uint8_t *buf, uint64_t bufsize,
+                        uint64_t i, struct Command *destination);
 
 #endif
