@@ -38,8 +38,8 @@ struct AddCommand
 
 enum CommandType
 {
-        MOVE_COMMAND,
-        ADD_COMMAND
+        MOVE_COMMAND = 'M',
+        ADD_COMMAND  = 'A'
 };
 
 // A command of runtime-determined type.
@@ -80,7 +80,7 @@ struct Command *nextLargestMove(const uint8_t *previousSrc,
 //
 // previousSrc - pointer to the first byte of the buffer onto which the patch 
 //               command is applied
-// prevLen     - length of previous src, in number of chars
+// prevLen - length of previous src, in number of chars
 // out     - output destination of the command. Existing bytes in the 
 //           command's domain will be overridden; all others are unmodified
 // outLen  - length of out, in number of chars
@@ -93,6 +93,48 @@ int patchCommand(const uint8_t *previousSrc, uint64_t prevLen,
 // only one because only 1 symbol is added; for moves, it's equal to the `len` 
 // struct member. If the type is garbage data, then this returns -1.
 int patchSizeOf(const struct Command *command);
+
+#define MAGIC_NUMBER ({ 'D', 'L', 'T', 'A'  })
+#define VERSION_CHUNK_NAME ({ 'v', 'r', 's', 'n' })
+#define CURRENT_VERSION 1
+#define META_CHUNK_NAME ({ 'm', 'e', 't', 'a' })
+#define DATA_CHUNK_NAME ({ 'd', 'a', 't', 'a' }) 
+
+// Little-endian 256-bit digest of a SHA-2 hash
+struct Sha256 {
+        uint8_t bytes[32];
+};
+
+// All of the bytes that come before the actual data. This is a RIFF-like
+// file. All multi-byte numbers (including those in the data) are 
+// little-endian.
+struct Version1Header {
+        // Top-level info
+        uint8_t magicNumber[4];  // MUST always be MAGIC_NUMBER
+        uint8_t versionChunk[4]; // MUST always be VERSION_CHUNK_NAME
+        uint8_t versionId;       // when serializing, always CURRENT_VERSION
+
+        // Meta data
+        uint8_t metaChunk[4];      // MUST always be META_CHUNK_NAME
+        union SerialLong metaSize; // includes the size of the comment sub chunk
+        uint8_t moveCommandSym;    // 'M' in version 1
+        uint8_t addCommandSym;     // 'A' in version 1
+        uint8_t cmdLensEqual;      // 1 iff serialSizeOf is equal for all CommandTypes
+        struct Sha256 previousSrcHash; // for the file used to reconstruct
+        struct Sha256 currentSrcHash;  // for the output of reconstruction
+        union SerialLong outputSize;   // reconstructed file's length, in bytes
+        uint8_t commentSubChunk[4];    // MUST always be COMMENT_CHUNK_NAME
+        union SerialLong commentSize;  // in bytes
+        uint8_t *comment; // length specified by commentSize
+
+        // Actual data (commands)
+        uint8_t dataChunkName;     // MUST always be DATA_CHUNK_NAME
+        union SerialLong dataSize; // in bytes
+        /* commands... */
+};
+
+// 0 - Little endian; 1 - big endian
+uint8_t determineEndian();
 
 // Determines how many bytes are necessary to serialize the given command. If 
 // the type is garbage data, then this returns -1.
