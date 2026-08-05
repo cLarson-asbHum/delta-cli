@@ -11,7 +11,6 @@
 #ifndef DELTA_H
 #define DELTA_H
 
-#include <stdio.h>
 #include <stdint.h>
 
 union SerialLong {
@@ -48,15 +47,10 @@ struct Command
         enum CommandType type;
         union
         {
-                struct MoveCommand *move;
-                struct AddCommand *add;
-        } command;
+                struct MoveCommand move;
+                struct AddCommand add;
+        } cmd;
 };
-
-// Frees all memory associated with the command recursively. This includes pointer 
-// members (i.e. (struct Command).command). This returns the type member of the 
-// command.
-int freeCommand(struct Command *command);
 
 // Computes the largest block move, as described by procedure L in Tichy (page 8).
 // If either curMaxCount is 0, or prevStart is greater than or equal to prevLen,
@@ -93,6 +87,12 @@ int patchCommand(const uint8_t *previousSrc, uint64_t prevLen,
 // only one because only 1 symbol is added; for moves, it's equal to the `len` 
 // struct member. If the type is garbage data, then this returns -1.
 int patchSizeOf(const struct Command *command);
+
+// ||Type byte|| + ||symbol|| + ||curIndex||, 
+#define ADD_SERIAL_SIZE (1 + 1 + 8)
+
+// ||Type byte|| + ||prevIndex|| + ||curIndex|| + ||len||
+#define MOVE_SERIAL_SIZE (1 + 8 + 8 + 8)
 
 #define MAGIC_NUMBER ({ 'D', 'L', 'T', 'A'  })
 #define VERSION_CHUNK_NAME ({ 'v', 'r', 's', 'n' })
@@ -160,19 +160,17 @@ int serializeCommand(uint8_t *buf, uint64_t bufSize,
  * 
  * This procedure assumes that the index `i` is, in fact, the first byte of a 
  * command; if it isn't (e.g. it's a part of a file's meta data), garbage data 
- * will be written to the command destination without returning any error 
- * (assuming no error described below occurs).
+ * will be written to the command destination, with or without error.
  *
- * When successful, the function returns `EXIT_SUCCESS` from stdio.h. If anything
- * else is returned, an error has occurred (e.g. end of the buffer was reached),
- * the destination pointer is in an undefined state.
+ * This function returns the number of bytes read and deserialized. If this 
+ * isn't equal to `serialSizeOf(destination)`, then an error has occurred
  *
  * buf     - pointer to first uint8_t in the serialized source
  * bufSize - length of the buffer array, in number of uint8_ts
  * i       - the first index to read when deserializing the command
  * destination - where the deserialized data will be written
  */
-int *deserializeCommand(const uint8_t *buf, uint64_t bufsize,
+int deserializeCommand(const uint8_t *buf, uint64_t bufSize,
                         uint64_t i, struct Command *destination);
 
 #endif
