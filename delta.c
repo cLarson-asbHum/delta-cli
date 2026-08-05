@@ -299,7 +299,7 @@ int deserializeMove(const uint8_t *buf, uint64_t bufSize, uint64_t start,
                 
         // Serializing the length
         const int lenRet = littleDeserialize(buf, bufSize, i, &(move->len));
-        return i + lenRet; // Assuming all went right, this equals MOVE_SERIAL_SIZE
+        return i - start + lenRet; // Assuming all went right, this equals MOVE_SERIAL_SIZE
 }
 
 int deserializeAdd(const uint8_t *buf, uint64_t bufSize, uint64_t start, 
@@ -310,7 +310,7 @@ int deserializeAdd(const uint8_t *buf, uint64_t bufSize, uint64_t start,
         }
 
         add->symbol = buf[start];
-        const int read = littleDeserialize(buf, bufSize, start, &(add->curIndex));
+        const int read = littleDeserialize(buf, bufSize, start + 1, &(add->curIndex));
         return 1 + read; // This should always equal ADD_SERIAL_SIZE
 }
 
@@ -345,9 +345,11 @@ int main(int argc, char **argv) {
                 return -1;
         }
 
+        // Try sStr = "uvwuvwxy" and tStr = "zuvwxwu"
+        // Such a combination should get you Az->0, M3->1(4), M2->5(2)
+
         char *sStr = argv[1];
         char *tStr = argv[2];
-
 
         const int sLen = strnlen(sStr, 64);
         const int tLen = strnlen(tStr, 64);
@@ -377,6 +379,7 @@ int main(int argc, char **argv) {
         while(q < tLen) {
                 struct Command *command = nextLargestMove(s, p, sLen, &(t[q]), tLen - q);
 
+                printf("\n");
                 if (command->type == ADD_COMMAND) {
                         // NOTE: curIndex must be set by the consumer
                         command->cmd.add.curIndex.longVal = q;
@@ -401,6 +404,29 @@ int main(int argc, char **argv) {
                         printf("%02x ", buf[i]);
                 }
                 printf("(read: %d)\n", serRet);
+
+                // Showing the deserialization of the previous serialization
+                struct Command desz = { .type=0xbb };
+                const int deszRet = deserializeCommand(buf, bufsize, 0, &desz);
+                switch(desz.type) {
+                case ADD_COMMAND: {
+                        const char c = (char) (desz.cmd.add.symbol);
+                        const uint8_t qSet = desz.cmd.add.curIndex.longVal;
+                        printf("Deserial: ADD '%c' at %d", c, qSet);
+                        break;
+                }
+                case MOVE_COMMAND: {
+                        const uint64_t pSet = desz.cmd.move.prevIndex.longVal;
+                        const uint64_t qSet = desz.cmd.move.curIndex.longVal;
+                        const uint64_t l    = desz.cmd.move.len.longVal;
+                        printf("Deserial: MOVE %d -> %d (length %d)", pSet, qSet, l);
+                        break;
+                }
+                default: 
+                        printf("Deserial: Garbage type (<0x%02h> '%c')", desz.type, desz.type);
+                        break;
+                }
+                printf(" (read: %d)\n", deszRet);
 
                 // Cleaning up for next iteration
                 q += patchSizeOf(command);
