@@ -12,6 +12,7 @@
 #define DELTA_H
 
 #include <stdint.h>
+#include "hash.h"
 
 union SerialLong {
         uint64_t longVal;
@@ -100,11 +101,6 @@ int patchSizeOf(const struct Command *command);
 #define META_CHUNK_NAME ({ 'm', 'e', 't', 'a' })
 #define DATA_CHUNK_NAME ({ 'd', 'a', 't', 'a' }) 
 
-// Little-endian 256-bit digest of a SHA-2 hash
-struct Sha256 {
-        uint8_t bytes[32];
-};
-
 // All of the bytes that come before the actual data. This is a RIFF-like
 // file. All multi-byte numbers (including those in the data) are 
 // little-endian.
@@ -120,8 +116,8 @@ struct Version1Header {
         uint8_t moveCommandSym;    // 'M' in version 1
         uint8_t addCommandSym;     // 'A' in version 1
         uint8_t cmdLensEqual;      // 1 iff serialSizeOf is equal for all CommandTypes
-        struct Sha256 previousSrcHash; // for the file used to reconstruct
-        struct Sha256 currentSrcHash;  // for the output of reconstruction
+        union Sha256 previousSrcHash; // for the file used to reconstruct
+        union Sha256 currentSrcHash;  // for the output of reconstruction
         union SerialLong outputSize;   // reconstructed file's length, in bytes
         uint8_t commentSubChunk[4];    // MUST always be COMMENT_CHUNK_NAME
         union SerialLong commentSize;  // in bytes
