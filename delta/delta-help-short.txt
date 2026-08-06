@@ -1,0 +1,57 @@
+delta-cli 0.0.0 | Connor Larson, 2026 | MIT license
+---------------------------------------------------
+
+Basic Syntax:
+
+    delta-cli ( -h | --help | -help | -? ) [--verbose]
+    delta-cli ( -v | --version | -version )
+    delta-cli delta [<delta-options...>] [--] <srcFilePath> <targetFilePath>
+    delta-cli reconstruct [<recon-options...>] [--] <srcFilePath> <deltaFilePath>
+
+Commands:
+
+    delta-cli ( -h | --help | -help | -? ) [--verbose]
+
+        Prints this help message and exits. 
+
+    delta-cli ( -v | --version | -version )
+
+        Prints the program name, author, license and version, and exits. 
+        Equivalent output information is visible at the top of this help message.
+
+    delta-cli delta ... <srcfilePath> <targetFilePath>
+
+        Computes the delta file from <srcFilePath> to <targetFilePath>. In 
+        other words, this generates the patch needed to reconstruct the target 
+        file given only the delta file and the src file. Neither input is modified.
+
+    delta-cli reconstruct ... <srcFilePath> <deltaFilePath>
+
+        Applies the given delta file to the src file, creating the original target
+        file. In other words, this is the inverse of "delta-cli delta", as it gets 
+        the target file input given the src file and such command's output. This 
+        modifies neither the src file nor the delta file.
+
+Flags:
+
+    --              Separates options from command arguments
+
+    -h              Prints this help message and exits. Using the --verbose 
+                    flag greatly increases the detail of the message.
+
+    -o <outputFilePath>
+                    The file to write deltas and reconstructed targets to.
+                    By default, any file existing at the destination will cause
+                    the program to exit with an error, unless the 
+                    --force-destination-delete flag is present.
+
+    --quiet         Only displays errors and standard input prompt messages.
+
+    --silent        Suppress all standard output and standard input, including 
+                    errors
+
+    -v              Displays the program name (delta-cli), version, author, date,
+                    and license. 
+
+    --verbose       For --help, increases message length. For delta or reconstruct,
+                    increases amount of info logged to standard output.

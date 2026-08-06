@@ -17,6 +17,7 @@
 #define OUTPUT_FLAG             (1u << (7))
 #define DESTINATION_DELETE_FLAG (1u << (8))
 #define IGNORE_HASH_FLAG        (1u << (9))
+#define GARBAGE_EASTER_EGG_FLAG (1u << (10))
 #define ERROR_FLAG              (1u << (30))
 
 int putFile(char *fileName)
@@ -83,6 +84,21 @@ int endsWith(char *str, int strLen, char *ending, int endingLen) {
         return 1;
 }
 
+enum SlurpErr {
+        SLURP_SUCCESS = 0,
+
+        UNKNOWN_COMMAND         = -1,
+        UNKNOWN_FLAG_OR_ARG     = -2,
+        ZERO_LENGTH_OUTPUT_PATH = -3,
+        MISSING_POS_ARG         = -4,
+
+        GARBAGE_SUCCESS_WITH_ERR_FLAG   = -1000,
+        GARBAGE_ERR_WITHOUT_ERR_FLAG    = -1001,
+};
+
+enum SlurpErr slurpErr = SLURP_SUCCESS;
+int slurpErrIndex = 0;
+
 void slurpArgs(struct Slurped *out, int argc, char **argv) 
 {
         out->flags = 0;
@@ -100,7 +116,7 @@ void slurpArgs(struct Slurped *out, int argc, char **argv)
 
         while ((!forceBreak) && (i < argc)) {
                 char *arg = argv[i];
-                printf("argv[%d]: \"%s\"\n", i, arg);
+                // printf("argv[%d]: \"%s\"\n", i, arg);
                 int lookingForOutput = 0;
 
                 // TODO: Optimize: compare in a hash map, and use a switch
@@ -117,8 +133,18 @@ void slurpArgs(struct Slurped *out, int argc, char **argv)
                         continue;
                 }
 
+                if (i == 1 && streq(arg, "garbage", 8) == 0) {
+                        out->flags = (out->flags | GARBAGE_EASTER_EGG_FLAG | ERROR_FLAG);
+                        slurpErr = UNKNOWN_COMMAND;
+                        slurpErrIndex = 1;
+                        return;
+                }
+
+
                 if(i == 1 && arg[0] != '-') {
                         // An option that wasn't "help" or "version" was arg 1
+                        slurpErr = UNKNOWN_COMMAND;
+                        slurpErrIndex = 1;
                         out->flags = (out->flags | ERROR_FLAG);
                         return; 
                 }
@@ -196,7 +222,7 @@ void slurpArgs(struct Slurped *out, int argc, char **argv)
                 }
 
                 // TODO: Output flag can be repeated with no error
-                // printf("Does compare with -o: %d", streq(arg, "-o", 3));
+                // // printf("Does compare with -o: %d", streq(arg, "-o", 3));
                 if (i > 1 && i < argc - 1 && (streq(arg, "-o", 3) == 0 
                         || streq(arg, "--output", 9) == 0)) 
                 {
@@ -208,6 +234,8 @@ void slurpArgs(struct Slurped *out, int argc, char **argv)
                         out->outputLen = strnlen(arg, MAX_FILE_PATH_LEN);
 
                         if(out->outputLen == 0) {
+                                slurpErr = ZERO_LENGTH_OUTPUT_PATH;
+                                slurpErrIndex = i;
                                 out->flags = (out->flags | ERROR_FLAG);
                                 return;
                         }
@@ -218,7 +246,14 @@ void slurpArgs(struct Slurped *out, int argc, char **argv)
                 }
 
                 // The argument was not recognized; error
+                slurpErr = UNKNOWN_FLAG_OR_ARG;
+                slurpErrIndex = i;
                 out->flags = (out->flags | ERROR_FLAG);
+                return;
+        }
+
+        // No need to parse positional arguments for help and version
+        if((out->flags & HELP_FLAG) || (out->flags & VERSION_FLAG)) {
                 return;
         }
 
@@ -229,12 +264,16 @@ void slurpArgs(struct Slurped *out, int argc, char **argv)
                 out->posArg1Len = strnlen(arg, MAX_FILE_PATH_LEN);
                 
                 if(out->posArg1Len == 0) {
+                        slurpErr = MISSING_POS_ARG;
+                        slurpErrIndex = i;
                         out->flags = (out->flags | ERROR_FLAG);
                         return;
                 }
 
                 out->posArg1 = arg;
         } else {
+                slurpErr = MISSING_POS_ARG;
+                slurpErrIndex = i;
                 out->flags = (out->flags | ERROR_FLAG);
                 return;
         }
@@ -244,6 +283,8 @@ void slurpArgs(struct Slurped *out, int argc, char **argv)
                 out->posArg2Len = strnlen(arg, MAX_FILE_PATH_LEN);
                 
                 if(out->posArg2Len == 0) {
+                        slurpErr = MISSING_POS_ARG;
+                        slurpErrIndex = i;
                         out->flags = (out->flags | ERROR_FLAG);
                         return;
                 }
@@ -251,6 +292,8 @@ void slurpArgs(struct Slurped *out, int argc, char **argv)
                 out->posArg2 = arg;
         } else {
                 out->flags = (out->flags | ERROR_FLAG);
+                slurpErr = MISSING_POS_ARG;
+                slurpErrIndex = i;
                 return;
         }
 
@@ -290,6 +333,93 @@ void slurpArgs(struct Slurped *out, int argc, char **argv)
         }
 }
 
+// Displays a message for the slurpErr variable. Returns SLURP_SUCCESS if there 
+// was no error to begin with
+enum SlurpErr displayErr(uint32_t flags, char **argv) 
+{
+        const int hasFlag = (flags & ERROR_FLAG);
+
+        if(hasFlag && slurpErr == SLURP_SUCCESS) {
+                printf("Garbage program state: success, but error flag was set.\n");
+                return GARBAGE_SUCCESS_WITH_ERR_FLAG;
+        }
+        
+        if(!hasFlag && slurpErr != SLURP_SUCCESS) {
+                printf("Garbage program state: err with code <%d>, but error flag was not set.\n",
+                        slurpErr);
+                return GARBAGE_ERR_WITHOUT_ERR_FLAG;
+        }
+
+        if(slurpErr == SLURP_SUCCESS) {
+                return SLURP_SUCCESS;
+        }
+
+        // Determining *why* the error flag is set
+        printf("Error at argument %d: ", slurpErrIndex);
+        switch(slurpErr) {
+        case UNKNOWN_COMMAND: 
+                printf("\"%s\" is not a valid command\n", argv[slurpErrIndex]);
+                
+                if(flags & GARBAGE_EASTER_EGG_FLAG) {
+                        printf(" \\___ Very funny... At least you read the docs, i guess?\n");
+                }
+                break;
+
+        case UNKNOWN_FLAG_OR_ARG: 
+                printf("\"%s\" is not a valid flag or argument\n", 
+                        argv[slurpErrIndex]);
+                break;
+
+        case ZERO_LENGTH_OUTPUT_PATH: 
+                printf("Output path (from -o or --output) had 0 length\n");
+                break;
+
+        case MISSING_POS_ARG: 
+                printf("Missing positional argument (e.g. src.txt or target.delta)\n");
+                break;
+
+        default:
+                printf("Error with unknown code <%d>\n", slurpErr);
+                break;
+        }
+
+        return slurpErr;
+}
+
+int displayHelp(uint32_t hasVerboseFlag) 
+{
+        char *home = getenv("DELTA_CLI_HOME");
+        if(home == NULL) {
+                printf("Could not print help message.\n");
+                printf(" \\___ %DELTA_CLI_HOME% environment variable could not be found");
+                return EXIT_FAILURE;
+        }
+
+        const int homeLen = strnlen(home, MAX_FILE_PATH_LEN) + 1;
+        if(hasVerboseFlag) {
+                const char helpFile[] = "\\delta-help-long.txt";
+                char *path = malloc(sizeof(helpFile) + sizeof(char) * homeLen);
+                strncpy(path, home, sizeof(char) * homeLen);
+                strncat(path, helpFile, sizeof(helpFile));
+                const int ret = putFile(path);
+                free(path);
+                return ret;
+        } else {
+                const char helpFile[] = "\\delta-help-short.txt";
+                char *path = malloc(sizeof(helpFile) + sizeof(char) * homeLen);
+                strncpy(path, home, sizeof(char) * homeLen);
+                strncat(path, helpFile, sizeof(helpFile));
+                const int ret = putFile(path);
+                free(path);
+                return ret;
+        }
+}
+
+int displayVersion() 
+{
+        printf("delta-cli 0.0.0 | Connor Larson, 2026 | MIT license\n");
+}
+
 int main(int argc, char **argv) 
 {
         if (argc < 1) {
@@ -299,6 +429,21 @@ int main(int argc, char **argv)
 
         struct Slurped *slurpedPtr = malloc(sizeof(struct Slurped));
         slurpArgs(slurpedPtr, argc, argv);
+
+        if(slurpedPtr->flags & HELP_FLAG) {
+                displayHelp(slurpedPtr->flags & VERBOSE_FLAG);
+                return EXIT_SUCCESS;
+        }
+        
+        if(slurpedPtr->flags & VERSION_FLAG) {
+                displayVersion();
+                return EXIT_SUCCESS;
+        }
+        
+        const int argErr = displayErr(slurpedPtr->flags, argv);
+        if(argErr != SLURP_SUCCESS) {
+                return argErr;
+        }
 
         //#region DEV START: Showing how the args were slurped
         struct Slurped slurped = *slurpedPtr;
