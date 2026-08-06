@@ -2,11 +2,15 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <string.h>
+#include <stdarg.h>
+#include <io.h>
 #include "delta.h"
 
 // a million, or 'round-about there
+#define DEBUG 0
 #define LOOP_MAX 1000000
 #define MAX_FILE_PATH_LEN 512
+
 #define HELP_FLAG               (1u << (0))
 #define VERSION_FLAG            (1u << (1))
 #define DELTA_FLAG              (1u << (2))
@@ -18,33 +22,75 @@
 #define DESTINATION_DELETE_FLAG (1u << (8))
 #define IGNORE_HASH_FLAG        (1u << (9))
 #define GARBAGE_EASTER_EGG_FLAG (1u << (10))
+#define PROMPT_FLAG             (1u << (11))
 #define ERROR_FLAG              (1u << (30))
 
-int putFile(char *fileName)
-{
-        FILE *file = fopen(fileName, "r");
+// NOTE: The flags SILENT, VERBOSE, and QUIET all need to fit in the first byte
+//       of the Slurped `flags` struct member.
+uint8_t logFlags = 0; 
 
-        if (file == NULL) {
-                printf("\nCould not load the file (null at %s)", fileName);
-                return EXIT_FAILURE;
+// Prints the format if and only if the DEBUG macro is 1.
+void debug(const char *format, ...) {
+        // Hopefully the compiler can optimize enough to remove this.
+        if(DEBUG) {
+                va_list args;
+                va_start(args, format);
+                const int ret = vfprintf(stdout, format, args);
+                va_end(args);
+        }
+}
+
+// Prints the format to stdout if and only if verbose mode is enabled
+int verbose(const char *format, ...) {
+        if((logFlags & VERBOSE_FLAG)) {
+                va_list args;
+                va_start(args, format);
+                const int ret = vfprintf(stdout, format, args);
+                va_end(args);
+                return ret;
         }
 
-        int retCode = 0;
-        for (int i = 0; (retCode != EOF) && (i < LOOP_MAX); i++) {
-                retCode = fgetc(file);
-                if (retCode != EOF) {
-                        retCode = putchar(retCode /* Really a char */);
-                }
+        return 0;
+}
+
+// Prints the format to stdout if neither quiet nor silent mode are enabled
+int normal(const char *format, ...) {
+        if((logFlags & QUIET_FLAG) || (logFlags & SILENT_FLAG)) {
+               return 0; 
         }
 
-        if (retCode == EOF && ferror(file)) {
-                printf("\nFailed the printing with error: %d", ferror(file));
-                fclose(file);
-                return EXIT_FAILURE;
+        va_list args;
+        va_start(args, format);
+        const int ret = vfprintf(stdout, format, args);
+        va_end(args);
+        return ret;
+}
+
+// Prints the format to stdout if and only if silent is not enabled. 
+int warn(const char *format, ...) {
+        // TODO: Reduced logging mode (between normal and error)
+        if(logFlags & SILENT_FLAG) {
+                return 0;
         }
 
-        fclose(file);
-        return EXIT_SUCCESS;
+        va_list args;
+        va_start(args, format);
+        const int ret = vfprintf(stdout, format, args);
+        va_end(args);
+        return ret;
+}
+
+// Prints the format to stderr if and only if silent is not enabled. 
+int error(const char *format, ...) {
+        if(logFlags & SILENT_FLAG) {
+                return 0;
+        }
+
+        va_list args;
+        va_start(args, format);
+        const int ret = vfprintf(stderr, format, args);
+        va_end(args);
+        return ret;
 }
 
 struct Slurped {
@@ -74,7 +120,7 @@ int endsWith(char *str, int strLen, char *ending, int endingLen) {
 
         char *subStr = &(str[strLen - endingLen]);
         for(int i = 0; i < endingLen; i++) {
-                printf("subStr[%d] == '%c'   ending[%d] == '%c'\n", i, subStr[i], 
+                debug("subStr[%d] == '%c'   ending[%d] == '%c'\n", i, subStr[i], 
                         i, ending[i]);
                 if(subStr[i] != ending[i]) {
                         return 0;
@@ -116,7 +162,7 @@ void slurpArgs(struct Slurped *out, int argc, char **argv)
 
         while ((!forceBreak) && (i < argc)) {
                 char *arg = argv[i];
-                // printf("argv[%d]: \"%s\"\n", i, arg);
+                debug("argv[%d]: \"%s\"\n", i, arg);
                 int lookingForOutput = 0;
 
                 // TODO: Optimize: compare in a hash map, and use a switch
@@ -198,6 +244,18 @@ void slurpArgs(struct Slurped *out, int argc, char **argv)
                         i++;
                         continue;
                 }
+                
+                if (i > 1 && (streq(arg, "-p", 3) == 0 
+                        || streq(arg, "--prompt", 9) == 0)) 
+                {
+                        // Override a force delete flag
+                        out->flags = (out->flags & ~(DESTINATION_DELETE_FLAG));
+                        
+                        // Apply the quiet flag
+                        out->flags = (out->flags | PROMPT_FLAG);
+                        i++;
+                        continue;
+                }
 
                 if (i > 1 && streq(arg, "--silent", 9) == 0) {
                         // Override verbose and quiet.
@@ -209,7 +267,9 @@ void slurpArgs(struct Slurped *out, int argc, char **argv)
                         continue;
                 }
 
-                if (i > 1 && streq(arg, "--force-destination-delete", 27) == 0) {
+                if (i > 1 && !(out->flags & PROMPT_FLAG)
+                        && streq(arg, "--force-destination-delete", 27) == 0) 
+                {
                         out->flags = (out->flags | DESTINATION_DELETE_FLAG);
                         i++;
                         continue;
@@ -222,7 +282,7 @@ void slurpArgs(struct Slurped *out, int argc, char **argv)
                 }
 
                 // TODO: Output flag can be repeated with no error
-                // // printf("Does compare with -o: %d", streq(arg, "-o", 3));
+                debug("Does compare with -o: %d\n", streq(arg, "-o", 3));
                 if (i > 1 && i < argc - 1 && (streq(arg, "-o", 3) == 0 
                         || streq(arg, "--output", 9) == 0)) 
                 {
@@ -340,12 +400,12 @@ enum SlurpErr displayErr(uint32_t flags, char **argv)
         const int hasFlag = (flags & ERROR_FLAG);
 
         if(hasFlag && slurpErr == SLURP_SUCCESS) {
-                printf("Garbage program state: success, but error flag was set.\n");
+                error("Garbage program state: success, but error flag was set.\n");
                 return GARBAGE_SUCCESS_WITH_ERR_FLAG;
         }
         
         if(!hasFlag && slurpErr != SLURP_SUCCESS) {
-                printf("Garbage program state: err with code <%d>, but error flag was not set.\n",
+                error("Garbage program state: err with code <%d>, but error flag was not set.\n",
                         slurpErr);
                 return GARBAGE_ERR_WITHOUT_ERR_FLAG;
         }
@@ -355,43 +415,72 @@ enum SlurpErr displayErr(uint32_t flags, char **argv)
         }
 
         // Determining *why* the error flag is set
-        printf("Error at argument %d: ", slurpErrIndex);
+        error("Error at argument %d: ", slurpErrIndex);
         switch(slurpErr) {
         case UNKNOWN_COMMAND: 
-                printf("\"%s\" is not a valid command\n", argv[slurpErrIndex]);
+                error("\"%s\" is not a valid command\n", argv[slurpErrIndex]);
                 
                 if(flags & GARBAGE_EASTER_EGG_FLAG) {
-                        printf(" \\___ Very funny... At least you read the docs, i guess?\n");
+                        normal(" \\___ Very funny... At least you read the docs, i guess?\n");
                 }
                 break;
 
         case UNKNOWN_FLAG_OR_ARG: 
-                printf("\"%s\" is not a valid flag or argument\n", 
+                error("\"%s\" is not a valid flag or argument\n", 
                         argv[slurpErrIndex]);
                 break;
 
         case ZERO_LENGTH_OUTPUT_PATH: 
-                printf("Output path (from -o or --output) had 0 length\n");
+                error("Output path (from -o or --output) had 0 length\n");
                 break;
 
         case MISSING_POS_ARG: 
-                printf("Missing positional argument (e.g. src.txt or target.delta)\n");
+                error("Missing positional argument (e.g. src.txt or target.delta)\n");
                 break;
 
         default:
-                printf("Error with unknown code <%d>\n", slurpErr);
+                error("Error with unknown code <%d>\n", slurpErr);
                 break;
         }
 
         return slurpErr;
 }
 
+int putFile(char *fileName)
+{
+        FILE *file = fopen(fileName, "r");
+
+        if (file == NULL) {
+                error("Error while displaying: Could not load the file (null at %s)", 
+                        fileName);
+                return EXIT_FAILURE;
+        }
+
+        int retCode = 0;
+        for (int i = 0; (retCode != EOF) && (i < LOOP_MAX); i++) {
+                retCode = fgetc(file);
+                if (retCode != EOF) {
+                        retCode = putchar(retCode /* Really a char */);
+                }
+        }
+
+        if (retCode == EOF && ferror(file)) {
+                error("Error while displaying: Standard error code <%d>", 
+                        ferror(file));
+                fclose(file);
+                return EXIT_FAILURE;
+        }
+
+        fclose(file);
+        return EXIT_SUCCESS;
+}
+
 int displayHelp(uint32_t hasVerboseFlag) 
 {
         char *home = getenv("DELTA_CLI_HOME");
         if(home == NULL) {
-                printf("Could not print help message.\n");
-                printf(" \\___ %DELTA_CLI_HOME% environment variable could not be found");
+                error("Could not print help message.\n");
+                normal(" \\___ %DELTA_CLI_HOME% environment variable could not be found");
                 return EXIT_FAILURE;
         }
 
@@ -420,52 +509,315 @@ int displayVersion()
         printf("delta-cli 0.0.0 | Connor Larson, 2026 | MIT license\n");
 }
 
+// Attempts to open a read-only file, displaying a message if the file cannot 
+// be opened. If the file cannot be opened, this returns NULL. The file must be 
+// closed with `fclose()` after usage
+FILE *attemptRFileOpen(char *filename, int maxCount) 
+{
+        // Getting the file name 
+        char *subName = malloc(sizeof(char) * (maxCount + 1));
+        strncpy(subName, filename, maxCount);
+        subName[maxCount] = '\0';
+
+        // Opening the file
+        FILE *file = fopen(subName, "rb"); // b to Win means that this is binary
+
+        if(file == NULL) {
+                error("Cannot open file \"%s\" for reading\n", subName);
+                normal(" \\___ Check the spelling of the path and the file name \n");
+                normal(" \\___ If the file exists, ensure it's not being used in another program \n");
+        } else {
+                verbose("Opened file \"%s\" as read-only\n", subName);
+        }
+
+        // Cleaning up
+        free(subName);
+        return file;
+}
+
+FILE *createWFile(char *filename) {
+        FILE *file = fopen(filename, "wb");
+        if(file == NULL) {
+                error("Error while create file: Could not create file \"s\" for writing\n",
+                        filename);
+                return NULL;
+        }
+        verbose("Created file \"%s\"\n", filename);
+        return file;
+}
+
+// Attempts to open or create a file for writing, displaying a message if the 
+// file cannot be opened. The flags argument specifies whether to override
+// an existing file, to prompt beforehand, or to only ever create new ones.
+FILE *attemptWFileOpen(char *filename, int maxCount, uint32_t flags) 
+{
+        // Getting the file name 
+        char *subName = malloc(sizeof(char) * (maxCount + 1));
+        strncpy(subName, filename, maxCount);
+        subName[maxCount] = '\0';
+
+        // Opening the file in read-only mode to check if it exists
+        FILE *file = fopen(subName, "rb"); // b to Win means that this is binary
+
+        if(file == NULL) {
+                // The file did not exist; create one for writing
+                file = createWFile(subName);
+                free(subName);
+                return file;
+        }
+
+        // The file DID exist; use the flags to figure out what to do
+        const int closeRet = fclose(file);
+        if(closeRet != 0) {
+                error("Error while creating file: Could not close \"%s\"\n", 
+                        subName);
+                free(subName);
+                return NULL;
+        }
+
+        const int force = flags & DESTINATION_DELETE_FLAG;
+        const int prompt = (flags & PROMPT_FLAG) && !(flags & SILENT_FLAG);
+        
+        char userOpinion = 'n';
+        if(prompt) {
+                // Get the user's opinion from stdin
+                // This always occurs with the prompt flag, even if force is set
+                normal("Would you like to override all content in \"%s\"? \n",
+                        subName);
+                normal("y/n (default is 'n') > ");
+                int resp = getchar();
+                debug("Response was 0x%08x \n", resp);
+                if(resp == EOF || ferror(stdin)) {
+                        warn("Warning: user input had an error (defaulting to 'n')\n");
+                }
+
+                if(resp == 'y' || resp == 'Y') {
+                        userOpinion = 'y';
+                }
+        }
+
+        if(prompt && userOpinion != 'y') {
+                // User says to NOT delete the file
+                // Respect their opinion (and don't inform them that they can 
+                // override this behavior)
+                file = NULL;
+                normal("Canceled.\n");
+        }
+
+        if(!prompt && !force) {
+                // No flags were set, so take the safest option.
+                // Unlike if the user opinionates 'n', we inform them
+                // that this behavior can be overridden with flags
+                // The user's opinion is to not delete or there were no flags,
+                // so we exit the program.
+                file = NULL;
+                error("Error while creating file: File \"%s\" already exists\n",
+                        subName);
+
+                if(!prompt) {
+                        normal(" \\___ To ask to override the file, use the -p or --prompt command flag\n");
+                }
+        }
+
+        if((!prompt && force) || (prompt && userOpinion == 'y')) {
+                // Only told to force delete, so do it
+                file = createWFile(subName);
+                normal(" \\___ Previous contents of the file were overridden\n");
+        }
+
+        free(subName);
+        return file;
+}
+
+// Puts the entire contents of a read-only file into a byte buffer.
+// This buffer MUST be freed after its used. This returns NULL if any error 
+// occurs
+uint8_t *readBin(char *filename, int filenameLen)
+{
+        // NOTE: This uses the Win _fileno() function to create a buffer
+        // Opening the src file and reading from
+        FILE *src = attemptRFileOpen(filename, filenameLen);
+        if(src == NULL) {
+                return NULL;
+        }
+
+        const long srcSize = _filelength(_fileno(src));
+        if(srcSize <= 0) {
+                error("Error while reading src: Source file length was 0 or an error.\n");
+                // TODO: Err code  should be set somewhere
+                return NULL;
+        }
+        uint8_t *srcBuf = malloc(srcSize);
+        if(srcBuf == NULL) {
+                error("Error while reading src: Failed to allocate %d bytes\n", 
+                        srcSize);
+                free(srcBuf);
+                // TODO: Failure should be set somewhere
+                return NULL;
+        }
+
+        normal("Reading from \"%s\"... (this may take awhile)\n", filename);
+        const int srcRead = fread((void *) srcBuf, 1, srcSize, src);
+        if(srcRead != srcSize) {
+                error("Error while reading src: Expected to read %d bytes; read %d\n", 
+                        srcSize, srcRead);
+                normal(" \\___ Reason: %s\n", strerror(errno));
+                free(srcBuf);
+                // TODO: Err code should be set somewhere
+                return NULL;
+        }
+
+        if(ferror(src)) {
+                error("Error while reading src: %s\n", strerror(ferror(src)));
+                free(srcBuf);
+                // TODO: Err code should be set somewhere
+                return NULL;
+        }
+
+        fclose(src);
+
+        if(ferror(src)) {
+                error("Error while reading src: %s\n", strerror(ferror(src)));
+                free(srcBuf);
+                // TODO: Err code should be set somewhere
+                return NULL;
+        }
+
+        return srcBuf;
+}
+
+int computeDelta(struct Slurped *args) 
+{
+        // Getting our output file
+        // This is done first to prevent postponing any errors or prompting
+        // for a time when the user has already waited minutes (or hours)
+        // for delta computation to have finished
+        FILE *outFile = attemptWFileOpen(args->outputFileName, args->outputLen, 
+                args->flags);
+        if(outFile == NULL) {
+                verbose("Cancelled the delta computation\n");
+                return EXIT_FAILURE;
+        }
+
+        // Reading the contents of our src files into buffers
+        uint8_t *srcBuf = readBin(args->posArg1, args->posArg1Len);
+        if(srcBuf == NULL) {
+                verbose("Cancelled the delta computation.\n");
+                fclose(outFile); // Doesn't really matter if this fails
+                return EXIT_FAILURE; // TODO: error code.
+        }
+        
+        uint8_t *targetBuf = readBin(args->posArg2, args->posArg2Len);
+        if(targetBuf == NULL) {
+                verbose("Cancelled the delta computation.\n");
+                fclose(outFile); // Doesn't really matter if this fails
+                free(srcBuf);
+                return EXIT_FAILURE; // TODO: error code.
+        }
+
+        // Computing the commands
+        normal("Computing ... (takes a lot of time)\n");
+        // TODO: Compute the commands
+        free(srcBuf);
+        free(targetBuf);
+
+        // Serializing
+        normal("Serializing the commands... (this may take a while)\n");
+        uint64_t outSize = 30; // TODO: Calculate size
+        uint8_t *outBuf = "Nothing here to output... yet"; // TODO: format header, concat serial commands
+        if(outBuf == NULL) {
+                error("Error while serializing: Could not allocate output buffer (size = %d bytes)\n",
+                        outSize);
+                fclose(outFile); // Doesn't really matter if this fails
+                return EXIT_FAILURE;
+        }
+        // TODO: Serialize
+
+        // Output buffer
+        normal("Writing the serialized commands buffer to a file...\n");
+        const int written = fwrite(outBuf, 1, outSize, outFile);
+        if(written != outSize) {
+                error("Error while writing delta: Expected to write %d bytes; wrote %d\n", 
+                        outSize, written);
+                normal(" \\___ Reason: %s\n", strerror(errno));
+                // free(outBuf); // TODO: Uncomment because malloc
+                fclose(outFile); // Doesn't really matter if this fails
+                return EXIT_FAILURE; // TODO: Error code
+        }
+
+        if(ferror(outFile)) {
+                error("Error while reading src: %s\n", strerror(ferror(outFile)));
+                // free(outBuf); // TODO: Uncomment because malloc
+                fclose(outFile); // Doesn't really matter if this fails
+                return EXIT_FAILURE; // TODO: Error code
+        }
+
+        // Cleaning up
+        // free(outBuf);// TODO: Uncomment because malloc
+        fclose(outFile); // Doesn't really matter if this fails
+        return EXIT_SUCCESS;
+}
+
+int reconstructTarget(struct Slurped *args) 
+{      
+        // TODO: Reconstruct
+        return EXIT_SUCCESS;
+}
+
 int main(int argc, char **argv) 
 {
+        // Parsing arguments if they're available
         if (argc < 1) {
-                exit(-1);
+                exit(EXIT_FAILURE);
                 return EXIT_FAILURE; // Unreachable
         }
 
         struct Slurped *slurpedPtr = malloc(sizeof(struct Slurped));
         slurpArgs(slurpedPtr, argc, argv);
+        const uint32_t flags = slurpedPtr->flags;
+        debug("Slurped Flags: %08x\n", flags);
+        debug("Output Path: %s (length %d)\n", 
+                slurpedPtr->outputFileName, slurpedPtr->outputLen);
+        debug("Pos arg 1: %s (length %d)\n", slurpedPtr->posArg1, 
+                slurpedPtr->posArg1Len);
+        debug("Pos arg 2: %s (length %d)\n", slurpedPtr->posArg2, 
+                slurpedPtr->posArg2Len);
 
-        if(slurpedPtr->flags & HELP_FLAG) {
-                displayHelp(slurpedPtr->flags & VERBOSE_FLAG);
+        // Help and version flags take precedent over everything (including errors)
+        if(flags & HELP_FLAG) {
+                displayHelp(flags & VERBOSE_FLAG);
+                free(slurpedPtr);
                 return EXIT_SUCCESS;
         }
         
-        if(slurpedPtr->flags & VERSION_FLAG) {
+        if(flags & VERSION_FLAG) {
                 displayVersion();
+                free(slurpedPtr);
                 return EXIT_SUCCESS;
         }
         
-        const int argErr = displayErr(slurpedPtr->flags, argv);
+        // Reporting an error and exiting if any occurred.
+        logFlags = flags & (VERBOSE_FLAG | QUIET_FLAG | SILENT_FLAG);
+        const int argErr = displayErr(flags, argv);
         if(argErr != SLURP_SUCCESS) {
+                free(slurpedPtr);
                 return argErr;
         }
 
-        //#region DEV START: Showing how the args were slurped
-        struct Slurped slurped = *slurpedPtr;
-        printf("Flags: %08x\n", slurped.flags);
+        // Running the specified command
+        if(flags & DELTA_FLAG) {
+                const int ret = computeDelta(slurpedPtr);
+                free(slurpedPtr);
+                return ret;
+        }
 
-        printf("Output: \"");
-        if(slurped.outputLen != 0) {
-                printf("%s", slurped.outputFileName);
+        if(flags & RECONSTRUCT_FLAG) {
+                const int ret = reconstructTarget(slurpedPtr);
+                free(slurpedPtr);
+                return ret;
         }
-        printf("\" (length %d)\n", slurped.outputLen);
 
-        printf("Pos 1: \"");
-        if(slurped.posArg1Len != 0) {
-                printf("%s", slurped.posArg1);
-        }
-        printf("\" (length %d)\n", slurped.posArg1Len);
-        
-        printf("Pos 2: \"");
-        if(slurped.posArg2Len != 0) {
-                printf("%s", slurped.posArg2);
-        }
-        printf("\" (length %d)\n", slurped.posArg2Len);
-        free(slurpedPtr);
-        //#endregion DEV END
+        // Unreachable under normal operation
+        error("Garbage state: No error occurred despite the command being unknown.\n");
+        return EXIT_FAILURE;
 }

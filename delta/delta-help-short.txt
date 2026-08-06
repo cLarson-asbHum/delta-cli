@@ -41,9 +41,14 @@ Flags:
 
     -o <outputFilePath>
                     The file to write deltas and reconstructed targets to.
-                    By default, any file existing at the destination will cause
-                    the program to exit with an error, unless the 
-                    --force-destination-delete flag is present.
+                    By default, a file that conflicts with the output will cause
+                    the program to exit with an error, unless either the
+                    --prompt, -p, or --force-destination-delete flag is present.
+
+    -p              Prompts before allowing the output of delta or reconstruct to 
+                    delete a conflicting file which has the same name as the 
+                    output. This flag takes precedent over 
+                    --force-destination-delete if both are present.
 
     --quiet         Only displays errors and standard input prompt messages.
 
