@@ -515,9 +515,9 @@ enum SlurpErr displayErr(uint32_t flags, char **argv, enum SlurpErr err, int i)
                 error("Too many positional arguments (expected only %d args)\n",
                         maxPosArgs(flags));
                 normal(" \\___ Check that all optional arguments have a flag before them\n");
-                normal("   \\___ e.g. \"--option path/file.ex\" rather than just \"path/file.ex\"\n");
+                verbose("   \\___ e.g. \"--option path/file.ex\" rather than just \"path/file.ex\"\n");
                 normal(" \\___ Verify that all options have '-' or '--' before them\n");
-                normal("   \\__ e.g. \"--prompt\" or \"-p\", rather than just \"prompt\"\n");
+                verbose("   \\__ e.g. \"--prompt\" or \"-p\", rather than just \"prompt\"\n");
                 break;
 
         case FORCE_BREAK:
@@ -623,7 +623,8 @@ FILE *attemptRFileOpen(char *filename, int maxCount)
         return file;
 }
 
-FILE *createWFile(char *filename) {
+FILE *createWFile(char *filename) 
+{
         FILE *file = fopen(filename, "wb");
         if (file == NULL) {
                 error("Error while creating file: Could not create file \"s\" for writing\n",
@@ -632,6 +633,63 @@ FILE *createWFile(char *filename) {
         }
         verbose("Created file \"%s\"\n", filename);
         return file;
+}
+
+// Returns 1 if the existing file should be overridden; 0 otherwise. This 
+// prints messages to stdout (and/or stderr)
+int overrideExisting(const char* subName, uint32_t flags) 
+{
+        const int force = flags & DESTINATION_DELETE_FLAG;
+        const int prompt = (flags & PROMPT_FLAG) && !(flags & SILENT_FLAG);
+        
+        char userOpinion = 'n';
+        if (prompt) {
+                // Get the user's opinion from stdin
+                // This always occurs with the prompt flag, even if force is set
+                loud("Would you like to override all content in \"%s\"? \n",
+                        subName);
+                loud("y/n (default is 'n') > ");
+                int resp = getchar();
+                debug("Response was 0x%08x \n", resp);
+                if (resp == EOF || ferror(stdin)) {
+                        loud("Warning: user input had an error (defaulting to 'n')\n");
+                }
+                
+                if(resp == 'y') {
+                        userOpinion = 'y';
+                }
+        }
+
+        if (prompt && userOpinion != 'y') {
+                // User says to NOT delete the file
+                // Respect their opinion (and don't inform them that they can 
+                // override this behavior)
+                normal(" \\___ Cancelled.\n");
+                return 0;
+        }
+
+        if (!prompt && !force) {
+                // No flags were set, so take the safest option.
+                // Unlike if the user opinionates 'n', we inform them
+                // that this behavior can be overridden with flags
+                // The user's opinion is to not delete or there were no flags,
+                // so we exit the program.
+                error("Error while creating file: File \"%s\" already exists\n",
+                        subName);
+
+                if (!prompt) {
+                        normal(" \\___ To ask to override the file, use the -p or --prompt command flag\n");
+                }
+                return 0;
+        }
+
+        if ((!prompt && force) || (prompt && userOpinion == 'y')) {
+                // We were only ever told to override the file, so do.
+                return 1;
+        }
+
+        // Should be unreachable, but just in case, assume 'n'
+        return 0;
 }
 
 // Attempts to open or create a file for writing, displaying a message if the 
@@ -663,58 +721,39 @@ FILE *attemptWFileOpen(char *filename, int maxCount, uint32_t flags)
                 return NULL;
         }
 
-        const int force = flags & DESTINATION_DELETE_FLAG;
-        const int prompt = (flags & PROMPT_FLAG) && !(flags & SILENT_FLAG);
-        
-        char userOpinion = 'n';
-        if (prompt) {
-                // Get the user's opinion from stdin
-                // This always occurs with the prompt flag, even if force is set
-                loud("Would you like to override all content in \"%s\"? \n",
-                        subName);
-                loud("y/n (default is 'n') > ");
-                int resp = getchar();
-                debug("Response was 0x%08x \n", resp);
-                if (resp == EOF || ferror(stdin)) {
-                        loud("Warning: user input had an error (defaulting to 'n')\n");
-                }
-
-                if (resp == 'y' || resp == 'Y') {
-                        userOpinion = 'y';
-                }
-        }
-
-        if (prompt && userOpinion != 'y') {
-                // User says to NOT delete the file
-                // Respect their opinion (and don't inform them that they can 
-                // override this behavior)
-                file = NULL;
-                normal(" \\___ Cancelled.\n");
-        }
-
-        if (!prompt && !force) {
-                // No flags were set, so take the safest option.
-                // Unlike if the user opinionates 'n', we inform them
-                // that this behavior can be overridden with flags
-                // The user's opinion is to not delete or there were no flags,
-                // so we exit the program.
-                file = NULL;
-                error("Error while creating file: File \"%s\" already exists\n",
-                        subName);
-
-                if (!prompt) {
-                        normal(" \\___ To ask to override the file, use the -p or --prompt command flag\n");
-                }
-        }
-
-        if ((!prompt && force) || (prompt && userOpinion == 'y')) {
+        if (overrideExisting(subName, flags)) {
                 // Only told to force delete, so do it
                 file = createWFile(subName);
                 normal(" \\___ Previous contents of the file were overridden\n");
+        } else {
+                file = NULL;
         }
 
         free(subName);
         return file;
+}
+
+void closeMaybeRemove(FILE *toClose, const struct Slurped *args) {
+        const int closeStatus = fclose(toClose);
+        if(closeStatus != 0)  {
+                loud("Warning: file could not be closed on error\n");
+                return;
+        }
+        
+        if(args->flags & PRESERVE_FLAG) {
+                return;
+        }
+
+        // Getting the file name 
+        const uint32_t len = args->outputLen;
+        const char *name = args->outputFileName;
+        char *subName = malloc(sizeof(char) * (len + 1));
+        strncpy(subName, name, len);
+        subName[len] = '\0';
+
+        // Removing the file
+        remove(subName);
+        free(subName);
 }
 
 struct FileBin {
@@ -782,6 +821,15 @@ struct FileBin *readBin(char *filename, int filenameLen)
         return result;
 }
 
+void freeBin(struct FileBin *bin) {
+        if (bin == NULL) {
+                return;
+        }
+
+        free(bin->buf);
+        free(bin);
+}
+
 struct LinkedCommand {
         struct Command *elem;
         struct LinkedCommand *next;
@@ -800,101 +848,32 @@ int freeLinked(struct LinkedCommand *head) {
         return i;
 }
 
-int nremove(const char *filename, int filenameLen) 
+void verboseCmdLog(const struct Command *command) 
 {
-        // Getting the file name 
-        char *subName = malloc(sizeof(char) * (filenameLen + 1));
-        strncpy(subName, filename, filenameLen);
-        subName[filenameLen] = '\0';
-        const int status = remove(subName);
-        free(subName);
-        return status;
+        if (command->type == ADD_COMMAND && (logFlags & VERBOSE_FLAG)) {
+                const char c = (char) (command->cmd.add.symbol);
+                const uint8_t qSet = command->cmd.add.curIndex.longVal;
+                verbose("   \\___ Command: ADD '%c' at %d \n", c, qSet);
+                return ;
+        }
+
+        if (command->type == MOVE_COMMAND && (logFlags & VERBOSE_FLAG)) {
+                const uint64_t pSet = command->cmd.move.prevIndex.longVal;
+                const uint64_t qSet = command->cmd.move.curIndex.longVal;
+                const uint64_t l    = command->cmd.move.len.longVal;
+                verbose("   \\___ Command: MOVE %d -> %d (length %d) \n", pSet, 
+                        qSet, l);
+                return ;
+        }
+
+        // Garbage data
+        verbose("   \\___ Garbage command (type <%d>)\n", command->type);
 }
 
-int computeDelta(struct Slurped *args) 
+void debugLinked(struct LinkedCommand *head) 
 {
-        // Getting our output file
-        // This is done first to prevent postponing any errors or prompting
-        // for a time when the user has already waited minutes (or hours)
-        // for delta computation to have finished
-        FILE *outFile = attemptWFileOpen(args->outputFileName, args->outputLen, 
-                args->flags);
-        if (outFile == NULL) {
-                verbose("Cancelled the delta computation\n");
-                return EXIT_FAILURE;
-        }
-
-        // Reading the contents of our src files into buffers
-        struct FileBin *s = readBin(args->posArg1, args->posArg1Len);
-        if (s == NULL) {
-                verbose("Cancelled the delta computation.\n");
-                // Doesn't really matter if either of these fail:
-                if(fclose(outFile) == 0 && !(args->flags & PRESERVE_FLAG))
-                        nremove(args->outputFileName, args->outputLen);
-                return EXIT_FAILURE; // TODO: error code.
-        }
-        
-        struct FileBin *t = readBin(args->posArg2, args->posArg2Len);
-        if (t == NULL) {
-                verbose("Cancelled the delta computation.\n");
-                free(s->buf);
-                free(s);
-                // Doesn't really matter if either of these fail:
-                if(fclose(outFile) == 0 && !(args->flags & PRESERVE_FLAG))
-                        nremove(args->outputFileName, args->outputLen);
-                return EXIT_FAILURE; // TODO: error code.
-        }
-
-        // Computing the commands
-        // We store the 
-        normal("Computing ... (takes a lot of time)\n");
-        struct LinkedCommand head = { .elem = NULL, .next = NULL };
-        struct LinkedCommand *last = &head;
-        uint64_t q = 0;
-        uint64_t outSize = 0;
-
-        while (q < t->size) {
-                normal(" \\___ %d / %d (%.2f%%)\n", q, t->size, 
-                        100.0f * (float) q / (float) t->size);
-
-                // TODO: Start from the last p.
-                struct Command *command = nextLargestMove(s->buf, 0, s->size, 
-                        &(t->buf[q]), t->size - q);
-
-                if (command->type == ADD_COMMAND) {
-                        // NOTE: curIndex must be set by the consumer
-                        command->cmd.add.curIndex.longVal = q;
-                        if (logFlags & VERBOSE_FLAG) {
-                                const char c = (char) (command->cmd.add.symbol);
-                                const uint8_t qSet = command->cmd.add.curIndex.longVal;
-                                verbose("   \\___ Command: ADD '%c' at %d \n", c, qSet);
-                        }
-                        
-                } else {
-                        // NOTE: curIndex must be set by the consumer
-                        command->cmd.move.curIndex.longVal = q;
-                        if (logFlags & VERBOSE_FLAG) {
-                                const uint64_t pSet = command->cmd.move.prevIndex.longVal;
-                                const uint64_t qSet = command->cmd.move.curIndex.longVal;
-                                const uint64_t l    = command->cmd.move.len.longVal;
-                                verbose("   \\___ Command: MOVE %d -> %d (length %d) \n", pSet, qSet, l);
-                        }
-                }
-
-                struct LinkedCommand *append = malloc(sizeof(struct LinkedCommand));
-                append->elem = command;
-                append->next = NULL;
-                last->next = append; // Appending our node onto the last node
-                last = append; // Making our node the last node.
-                q += patchSizeOf(command);
-                outSize += serialSizeOf(command);
-        }
-
-        debug("Ended command parsing\n");
-
-        //#region DEV START: Printing the linked list chain
         if (DEBUG) {
-                struct LinkedCommand *cur = &head;
+                struct LinkedCommand *cur = head;
                 int i = 0;
                 while (cur != NULL) {
                         if (cur->elem != NULL) {
@@ -910,88 +889,157 @@ int computeDelta(struct Slurped *args)
                 }
                 printf(" (%d)\n", i);
         }
-        //#endregion DEV END
-        
-        debug("Freeing the s buffer\n");
-        free(s->buf);
-        debug("Freeing the s FileBin struct\n");
-        free(s);
-        debug("Freeing the t buffer\n");
-        free(t->buf);
-        debug("Freeing the t FileBin struct\n");
-        free(t);
+}
 
-        // Serializing the commands
-        normal("Serializing the commands... (this may take a while)\n");
-        verbose("Attempting to allocate %d bytes...\n", outSize);
-        uint8_t *outBuf = (uint8_t *) malloc(outSize);
-        uint64_t outIndex = 0;
-        if (outBuf == NULL) {
-                error("Error while serializing: Could not allocate output buffer (size = %d bytes)\n",
-                        outSize);
-                // Doesn't really matter if either of these fail:
-                if(fclose(outFile) == 0 && !(args->flags & PRESERVE_FLAG))
-                        nremove(args->outputFileName, args->outputLen);
-                freeLinked(head.next);
-                return EXIT_FAILURE;
-        }
-        verbose("Finished allocation\n");
-        struct LinkedCommand *cur = head.next;
-        debug("Starting linked list traversal\n");
-        while (cur != NULL) {
-                const struct Command *command = cur->elem;
-                debug("Trying to serialize the specific command\n");
-                if (command != NULL) {
-                        debug("Non-null (type '%c')\n", command->type);
-                        const uint32_t expectedSize = serialSizeOf(command);
-                        verbose(" \\___ Serializing command with type '%c' and serial size %d\n",
-                                command->type, expectedSize);                        
-                        const uint32_t wrote = serializeCommand(outBuf, outSize, 
-                                outIndex, command);
-                        if (wrote < expectedSize) {
-                                error("Error while serializing: Expected to write %d bytes for command type '%c'; wrote %d\n",
-                                        expectedSize, command->type, wrote);
-                                free(outBuf);
-                                freeLinked(cur);
-                                return EXIT_FAILURE;
-                        }
-                        outIndex += expectedSize;
+uint64_t computeCmds(const struct FileBin *s, const struct FileBin *t, 
+        struct LinkedCommand *head) 
+{
+        struct LinkedCommand *last = head;
+        uint64_t q = 0;
+        uint64_t outSize = 0;
+
+        while (q < t->size) {
+                normal(" \\___ %d / %d (%.2f%%)\n", q, t->size, 
+                        100.0f * (float) q / (float) t->size);
+
+                // TODO: Start from the last p.
+                struct Command *command = nextLargestMove(s->buf, 0, s->size, 
+                        &(t->buf[q]), t->size - q);
+
+                if (command->type == ADD_COMMAND) {
+                        command->cmd.add.curIndex.longVal = q;
                 } else {
-                        debug("Null\n");
-                        verbose(" \\___ Command member was NULL\n");
+                        command->cmd.move.curIndex.longVal = q;
+                }
+                
+                verboseCmdLog(command);
+                q += patchSizeOf(command);
+                outSize += serialSizeOf(command);
+
+                // Appending our command to the end of a singly-linked list.
+                // We add to the last elem rather than the head in order to
+                // have first-in-first-out iteration.
+                struct LinkedCommand *append = malloc(sizeof(struct LinkedCommand));
+                append->elem = command;
+                append->next = NULL;
+                last->next = append; // Appending our node onto the last node
+                last = append; // Making our node the last node.
+        }
+
+        return outSize;
+}
+
+// Returns 0 if an error occurred
+uint64_t computeCmdsFromArgs(const struct Slurped *args, struct LinkedCommand *head) 
+{
+        // Reading the contents of our src files into buffers
+        struct FileBin *s = readBin(args->posArg1, args->posArg1Len);
+        if (s == NULL) {
+                return 0;
+        }
+        
+        struct FileBin *t = readBin(args->posArg2, args->posArg2Len);
+        if (t == NULL) {
+                freeBin(s);
+                return 0;
+        }
+
+        // Computing the commands
+        normal("Computing ... (takes a lot of time)\n");
+        const uint64_t outSize = computeCmds(s, t, head);
+        debugLinked(head);
+        freeBin(s);
+        freeBin(t);
+        return outSize;
+}
+
+uint64_t serializeCmds(uint8_t *outBuf, uint64_t bufSize, 
+        struct LinkedCommand *head) 
+{
+        struct LinkedCommand *cur = head->next;
+        uint64_t i = 0;
+
+        while (cur != NULL) {
+                const struct Command *cmd = cur->elem;
+                verbose(" \\___ Serializing command with type '%c' and serial size %d\n",
+                        cmd->type, serialSizeOf(cmd));  
+                debug(" \\___ Index: %d\n", i);
+                
+                // Serializing the command
+                const uint32_t expectedSize = serialSizeOf(cmd);
+                const uint32_t wrote = serializeCommand(outBuf, bufSize, i, cmd);
+
+                if (wrote != expectedSize) {
+                        error("Error while serializing: Expected to write %d bytes for command type '%c'; wrote %d\n",
+                                expectedSize, cmd->type, wrote);
+                        return i;
                 }
 
-                struct LinkedCommand *prev = cur;
+                i += expectedSize;                
                 cur = cur->next;
-                debug("Moved to the next linked node\n");
-                free(prev->elem);
-                free(prev);
         }
-        debug("Starting\n");
 
-        // Output buffer
-        // TODO: Serialize header
+        verbose("Finished serialization\n");
+        return i;
+}
+
+int computeDelta(const struct Slurped *args) 
+{        
+        
+        // Getting our output file
+        // This is done first to prevent postponing any errors or prompting
+        // for a time when the user has already waited minutes (or hours)
+        // for delta computation to have finished
+        FILE *outFile = attemptWFileOpen(args->outputFileName, args->outputLen, 
+                args->flags);
+        if (outFile == NULL) {
+                verbose("Cancelled the delta computation.\n");
+                return EXIT_FAILURE;
+        }
+
+        // Computing our commands 
+        struct LinkedCommand head = { .elem = NULL, .next = NULL };
+        const uint64_t outSize = computeCmdsFromArgs(args, &head);
+        if (outSize == 0) {
+                verbose("Cancelled the delta computation.\n");
+                closeMaybeRemove(outFile, args);
+                return EXIT_FAILURE;
+        }
+
+        // Allocating our destination for serialization
+        normal("Serializing the commands... (this may take a while)\n");
+        debug("Allocating %d bytes...\n", outSize);
+        uint8_t *outBuf = (uint8_t *) malloc(outSize);
+        debug("Allocated.\n");
+        if (outBuf == NULL) {
+                error("Error while serializing: Could not allocate %d byte output buffer\n",
+                        outSize);
+                freeLinked(head.next);
+                closeMaybeRemove(outFile, args);
+                return EXIT_FAILURE;
+        }
+
+        // Serializing the commands
+        if(serializeCmds(outBuf, outSize, &head) != outSize) {
+                // Error message was already sent from serializeCmds()
+                verbose("Cancelled delta computation\n");
+                freeLinked(head.next);
+                free(outBuf);
+                closeMaybeRemove(outFile, args);
+                return EXIT_FAILURE;
+        }
+        freeLinked(head.next);
+
+        // TODO: Format header
+        // TODO: Write header
+
+        // Writing the serialized output to a file.
         normal("Writing the serialized commands buffer to a file...\n");
         const int written = fwrite(outBuf, 1, outSize, outFile);
-        if (written != outSize) {
-                error("Error while writing delta: Expected to write %d bytes; wrote %d\n", 
-                        outSize, written);
-                normal(" \\___ Reason: %s\n", strerror(errno));
+        if (written != outSize || ferror(outFile)) {
+                error("Error while writing delta: %s\n", strerror(ferror(outFile)));
                 free(outBuf);
-                // TODO: Create a flag that preserves a file even if it is incomplete
-                // Doesn't really matter if either of these fail:
-                if(fclose(outFile) == 0 && !(args->flags & PRESERVE_FLAG))
-                        nremove(args->outputFileName, args->outputLen);
-                return EXIT_FAILURE; // TODO: Error code
-        }
-
-        if (ferror(outFile)) {
-                error("Error while reading src: %s\n", strerror(ferror(outFile)));
-                free(outBuf);
-                // TODO: Create a flag that preserves a file even if it is incomplete
-                // Doesn't really matter if either of these fail:
-                if(fclose(outFile) == 0 && !(args->flags & PRESERVE_FLAG))
-                        nremove(args->outputFileName, args->outputLen);
+                closeMaybeRemove(outFile, args);
                 return EXIT_FAILURE; // TODO: Error code
         }
 

@@ -220,7 +220,7 @@ int serializeMove(uint8_t *buf, uint64_t bufSize, uint64_t start,
                 
         // Serializing the length
         const int lenRet = littleSerialize(buf, bufSize, i, &(move->len));
-        return i + lenRet; // Assuming all went right, this equals MOVE_SERIAL_SIZE
+        return i - start + lenRet; // Assuming all went right, this equals MOVE_SERIAL_SIZE
 }
 
 int serializeCommand(uint8_t *buf, uint64_t bufSize, uint64_t i, 
