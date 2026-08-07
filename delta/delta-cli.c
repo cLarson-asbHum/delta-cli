@@ -25,9 +25,7 @@
 #define PROMPT_FLAG             (1u << (11))
 #define ERROR_FLAG              (1u << (30))
 
-// NOTE: The flags SILENT, VERBOSE, and QUIET all need to fit in the first byte
-//       of the Slurped `flags` struct member.
-uint8_t logFlags = 0; 
+uint32_t logFlags = 0; 
 
 // Prints the format if and only if the DEBUG macro is 1.
 void debug(const char *format, ...) {
@@ -137,6 +135,7 @@ enum SlurpErr {
         UNKNOWN_FLAG_OR_ARG     = -2,
         ZERO_LENGTH_OUTPUT_PATH = -3,
         MISSING_POS_ARG         = -4,
+        TOO_MANY_POS_ARGS       = -5,
         
         FORCE_BREAK = -100,  // For internal use when slurping only
         CONTINUE    = -101,  // For internal use when slurping only
@@ -146,41 +145,62 @@ enum SlurpErr {
 
 int slurpIndex = 1;
 
+uint8_t minPosArgs(uint32_t flags) 
+{
+        if((flags & DELTA_FLAG) || (flags & RECONSTRUCT_FLAG)) {
+                return 2;
+        }
+
+        // Unrecognized command, invalidate all arguments
+        return 255;
+}
+
+uint8_t maxPosArgs(uint32_t flags) 
+{
+        if((flags & DELTA_FLAG) || (flags & RECONSTRUCT_FLAG)) {
+                return 2;
+        }
+
+        // Unrecognized command; invalidate all arguments
+        return 0;
+}
+
 enum SlurpErr getPosArgs(struct Slurped *out, int argc, char **argv, int i) 
 {
-        if (i < argc) {
-                char *arg = argv[i];
-                out->posArg1Len = strnlen(arg, MAX_FILE_PATH_LEN);
-                
-                if (out->posArg1Len == 0) {
-                        slurpIndex = i;
-                        out->flags = (out->flags | ERROR_FLAG);
-                        return MISSING_POS_ARG;
-                }
-
-                out->posArg1 = arg;
-        } else {
-                slurpIndex = i;
+        // Handling errors with positional argument parsing
+        // NOTE: Slurped only currently supports 2 arguments, but that's fine
+        //       we are simply future proofing *this* code right now
+        const uint8_t min = minPosArgs(out->flags);
+        const uint8_t max = maxPosArgs(out->flags);
+        if(argc - i > max) {
                 out->flags = (out->flags | ERROR_FLAG);
+                slurpIndex = i + max;
+                return TOO_MANY_POS_ARGS;
+        }
+
+        if(argc - i < min) {
+                out->flags = (out->flags | ERROR_FLAG);
+                slurpIndex = argc - 1;
                 return MISSING_POS_ARG;
         }
 
-        if (i + 1 < argc) {
-                char *arg = argv[i + 1];
-                out->posArg2Len = strnlen(arg, MAX_FILE_PATH_LEN);
-                
-                if (out->posArg2Len == 0) {
-                        slurpIndex = i;
-                        out->flags = (out->flags | ERROR_FLAG);
-                        return MISSING_POS_ARG;
-                }
-
-                out->posArg2 = arg;
-        } else {
+        // We have exactly as mant positional arguments as we expect.
+        // (^ We have yet to check that the pos args have *any* content in them)
+        char *arg1 = argv[i];
+        out->posArg1Len = strnlen(arg1, MAX_FILE_PATH_LEN);
+        if (out->posArg1Len <= 0) {
                 out->flags = (out->flags | ERROR_FLAG);
-                slurpIndex = i;
                 return MISSING_POS_ARG;
         }
+        out->posArg1 = arg1;
+
+        char *arg2 = argv[i + 1];
+        out->posArg2Len = strnlen(arg2, MAX_FILE_PATH_LEN);
+        if (out->posArg2Len <= 0) {
+                out->flags = (out->flags | ERROR_FLAG);
+                return MISSING_POS_ARG;
+        }
+        out->posArg2 = arg2;
 
         return SLURP_SUCCESS;
 
@@ -316,10 +336,11 @@ enum SlurpErr checkOpt(struct Slurped *out, int argc, char **argv)
                 return SLURP_SUCCESS;
         }
 
-        if (!(out->flags & PROMPT_FLAG)
-                && streq(arg, "--force-destination-delete", 27)) 
-        {
-                out->flags = (out->flags | DESTINATION_DELETE_FLAG);
+        if (streq(arg, "--force-destination-delete", 27)) {
+                // Adding the destination delete flag if prompt isn't present
+                if(!(out->flags & PROMPT_FLAG)) {
+                        out->flags = (out->flags | DESTINATION_DELETE_FLAG);
+                }
                 return SLURP_SUCCESS;
         }
         
@@ -472,6 +493,7 @@ enum SlurpErr displayErr(uint32_t flags, char **argv, enum SlurpErr err, int i)
 
         case UNKNOWN_FLAG_OR_ARG: 
                 error("\"%s\" is not a valid flag or argument\n", argv[i]);
+                normal(" \\___ If a file starts with '-', try adding the '--' flag before it");
                 break;
 
         case ZERO_LENGTH_OUTPUT_PATH: 
@@ -480,6 +502,16 @@ enum SlurpErr displayErr(uint32_t flags, char **argv, enum SlurpErr err, int i)
 
         case MISSING_POS_ARG: 
                 error("Missing positional argument (e.g. src.txt or target.delta)\n");
+                normal(" \\___ If one starts with '-', try adding the '--' flag before it");
+                break;
+
+        case TOO_MANY_POS_ARGS:
+                error("Too many positional arguments (expected only %d args)\n",
+                        maxPosArgs(flags));
+                normal(" \\___ Check that all optional arguments have a flag before them\n");
+                normal("   \\___ e.g. \"--option path/file.ex\" rather than just \"path/file.ex\"\n");
+                normal(" \\___ Verify that all options have '-' or '--' before them\n");
+                normal("   \\__ e.g. \"--prompt\" or \"-p\", rather than just \"prompt\"\n");
                 break;
 
         case FORCE_BREAK:
@@ -955,6 +987,7 @@ int main(int argc, char **argv)
                 return EXIT_FAILURE; // Unreachable
         }
 
+        normal("\n");
         struct Slurped *slurpedPtr = malloc(sizeof(struct Slurped));
         const enum SlurpErr slurpErr = slurpArgs(slurpedPtr, argc, argv);
         const uint32_t flags = slurpedPtr->flags;
@@ -968,12 +1001,14 @@ int main(int argc, char **argv)
         if (flags & HELP_FLAG) {
                 displayHelp(flags & VERBOSE_FLAG);
                 free(slurpedPtr);
+                normal("\n");
                 return EXIT_SUCCESS;
         }
         
         if (flags & VERSION_FLAG) {
                 displayVersion();
                 free(slurpedPtr);
+                normal("\n");
                 return EXIT_SUCCESS;
         }
         
@@ -982,6 +1017,7 @@ int main(int argc, char **argv)
         const int argErr = displayErr(flags, argv, slurpErr, slurpIndex);
         if (argErr != SLURP_SUCCESS) {
                 free(slurpedPtr);
+                normal("\n");
                 return argErr;
         }
 
@@ -989,16 +1025,19 @@ int main(int argc, char **argv)
         if (flags & DELTA_FLAG) {
                 const int ret = computeDelta(slurpedPtr);
                 free(slurpedPtr);
+                normal("\n");
                 return ret;
         }
 
         if (flags & RECONSTRUCT_FLAG) {
                 const int ret = reconstructTarget(slurpedPtr);
                 free(slurpedPtr);
+                normal("\n");
                 return ret;
         }
 
         // Unreachable under normal operation
         error("Garbage state: No error occurred despite the command being unknown.\n");
+        normal("\n");
         return EXIT_FAILURE;
 }
