@@ -67,7 +67,7 @@ int normal(const char *format, ...) {
 }
 
 // Prints the format to stdout if and only if silent is not enabled. 
-int warn(const char *format, ...) {
+int loud(const char *format, ...) {
         // TODO: Reduced logging mode (between normal and error)
         if(logFlags & SILENT_FLAG) {
                 return 0;
@@ -582,13 +582,13 @@ FILE *attemptWFileOpen(char *filename, int maxCount, uint32_t flags)
         if(prompt) {
                 // Get the user's opinion from stdin
                 // This always occurs with the prompt flag, even if force is set
-                normal("Would you like to override all content in \"%s\"? \n",
+                loud("Would you like to override all content in \"%s\"? \n",
                         subName);
-                normal("y/n (default is 'n') > ");
+                loud("y/n (default is 'n') > ");
                 int resp = getchar();
                 debug("Response was 0x%08x \n", resp);
                 if(resp == EOF || ferror(stdin)) {
-                        warn("Warning: user input had an error (defaulting to 'n')\n");
+                        loud("Warning: user input had an error (defaulting to 'n')\n");
                 }
 
                 if(resp == 'y' || resp == 'Y') {
