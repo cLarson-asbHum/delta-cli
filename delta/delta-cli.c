@@ -601,7 +601,7 @@ FILE *attemptWFileOpen(char *filename, int maxCount, uint32_t flags)
                 // Respect their opinion (and don't inform them that they can 
                 // override this behavior)
                 file = NULL;
-                normal("Canceled.\n");
+                normal(" \\___ Cancelled.\n");
         }
 
         if(!prompt && !force) {
@@ -629,10 +629,15 @@ FILE *attemptWFileOpen(char *filename, int maxCount, uint32_t flags)
         return file;
 }
 
+struct FileBin {
+        uint64_t size;
+        uint8_t *buf;
+};
+
 // Puts the entire contents of a read-only file into a byte buffer.
 // This buffer MUST be freed after its used. This returns NULL if any error 
 // occurs
-uint8_t *readBin(char *filename, int filenameLen)
+struct FileBin *readBin(char *filename, int filenameLen)
 {
         // NOTE: This uses the Win _fileno() function to create a buffer
         // Opening the src file and reading from
@@ -683,7 +688,28 @@ uint8_t *readBin(char *filename, int filenameLen)
                 return NULL;
         }
 
-        return srcBuf;
+        struct FileBin *result = malloc(sizeof(struct FileBin));
+        result->size = srcSize;
+        result->buf = srcBuf;
+        return result;
+}
+
+struct LinkedCommand {
+        struct Command *elem;
+        struct LinkedCommand *next;
+};
+
+int freeLinked(struct LinkedCommand *head) {
+        struct LinkedCommand *cur = head;
+        int i = 0;
+        while (cur != NULL) {
+                struct LinkedCommand *prev = cur;
+                cur = cur->next;
+                free(prev->elem);
+                free(prev);
+                i++;
+        }
+        return i;
 }
 
 int computeDelta(struct Slurped *args) 
@@ -700,60 +726,167 @@ int computeDelta(struct Slurped *args)
         }
 
         // Reading the contents of our src files into buffers
-        uint8_t *srcBuf = readBin(args->posArg1, args->posArg1Len);
-        if(srcBuf == NULL) {
+        struct FileBin *s = readBin(args->posArg1, args->posArg1Len);
+        if(s == NULL) {
                 verbose("Cancelled the delta computation.\n");
                 fclose(outFile); // Doesn't really matter if this fails
                 return EXIT_FAILURE; // TODO: error code.
         }
         
-        uint8_t *targetBuf = readBin(args->posArg2, args->posArg2Len);
-        if(targetBuf == NULL) {
+        struct FileBin *t = readBin(args->posArg2, args->posArg2Len);
+        if(t == NULL) {
                 verbose("Cancelled the delta computation.\n");
                 fclose(outFile); // Doesn't really matter if this fails
-                free(srcBuf);
+                free(s->buf);
+                free(s);
                 return EXIT_FAILURE; // TODO: error code.
         }
 
         // Computing the commands
+        // We store the 
         normal("Computing ... (takes a lot of time)\n");
-        // TODO: Compute the commands
-        free(srcBuf);
-        free(targetBuf);
+        struct LinkedCommand head = { .elem = NULL, .next = NULL };
+        struct LinkedCommand *last = &head;
+        uint64_t q = 0;
+        uint64_t outSize = 0;
 
-        // Serializing
+        while(q < t->size) {
+                normal(" \\___ %d / %d (%.2f%%)\n", q, t->size, 
+                        100.0f * (float) q / (float) t->size);
+
+                // TODO: Start from the last p.
+                struct Command *command = nextLargestMove(s->buf, 0, s->size, 
+                        &(t->buf[q]), t->size - q);
+
+                if (command->type == ADD_COMMAND) {
+                        // NOTE: curIndex must be set by the consumer
+                        command->cmd.add.curIndex.longVal = q;
+                        if(logFlags & VERBOSE_FLAG) {
+                                const char c = (char) (command->cmd.add.symbol);
+                                const uint8_t qSet = command->cmd.add.curIndex.longVal;
+                                verbose("   \\___ Command: ADD '%c' at %d \n", c, qSet);
+                        }
+                        
+                } else {
+                        // NOTE: curIndex must be set by the consumer
+                        command->cmd.move.curIndex.longVal = q;
+                        if(logFlags & VERBOSE_FLAG) {
+                                const uint64_t pSet = command->cmd.move.prevIndex.longVal;
+                                const uint64_t qSet = command->cmd.move.curIndex.longVal;
+                                const uint64_t l    = command->cmd.move.len.longVal;
+                                verbose("   \\___ Command: MOVE %d -> %d (length %d) \n", pSet, qSet, l);
+                        }
+                }
+
+                struct LinkedCommand *append = malloc(sizeof(struct LinkedCommand));
+                append->elem = command;
+                append->next = NULL;
+                last->next = append; // Appending our node onto the last node
+                last = append; // Making our node the last node.
+                q += patchSizeOf(command);
+                outSize += serialSizeOf(command);
+        }
+
+        debug("Ended command parsing\n");
+
+        //#region DEV START: Printing the linked list chain
+        if(DEBUG) {
+                struct LinkedCommand *cur = &head;
+                int i = 0;
+                while (cur != NULL) {
+                        if(cur->elem != NULL) {
+                                debug("'%c'", cur->elem->type);
+                        } else {
+                                debug("null");
+                        }
+                        if(cur->next != NULL) {
+                                debug(" --> ");
+                        }
+                        cur = cur->next;
+                        i++;
+                }
+                printf(" (%d)\n", i);
+        }
+        //#endregion DEV END
+        
+        debug("Freeing the s buffer\n");
+        free(s->buf);
+        debug("Freeing the s FileBin struct\n");
+        free(s);
+        debug("Freeing the t buffer\n");
+        free(t->buf);
+        debug("Freeing the t FileBin struct\n");
+        free(t);
+
+        // Serializing the commands
         normal("Serializing the commands... (this may take a while)\n");
-        uint64_t outSize = 30; // TODO: Calculate size
-        uint8_t *outBuf = "Nothing here to output... yet"; // TODO: format header, concat serial commands
+        verbose("Attempting to allocate %d bytes...\n", outSize);
+        uint8_t *outBuf = (uint8_t *) malloc(outSize);
+        uint64_t outIndex = 0;
         if(outBuf == NULL) {
                 error("Error while serializing: Could not allocate output buffer (size = %d bytes)\n",
                         outSize);
                 fclose(outFile); // Doesn't really matter if this fails
+                freeLinked(head.next);
                 return EXIT_FAILURE;
         }
-        // TODO: Serialize
+        verbose("Finished allocation\n");
+        struct LinkedCommand *cur = head.next;
+        debug("Starting linked list traversal\n");
+        while(cur != NULL) {
+                const struct Command *command = cur->elem;
+                debug("Trying to serialize the specific command\n");
+                if(command != NULL) {
+                        debug("Non-null (type '%c')\n", command->type);
+                        const uint32_t expectedSize = serialSizeOf(command);
+                        verbose(" \\___ Serializing command with type '%c' and serial size %d\n",
+                                command->type, expectedSize);                        
+                        const uint32_t wrote = serializeCommand(outBuf, outSize, 
+                                outIndex, command);
+                        if(wrote < expectedSize) {
+                                error("Error while serializing: Expected to write %d bytes for command type '%c'; wrote %d\n",
+                                        expectedSize, command->type, wrote);
+                                free(outBuf);
+                                freeLinked(cur);
+                                return EXIT_FAILURE;
+                        }
+                        outIndex += expectedSize;
+                } else {
+                        debug("Null\n");
+                        verbose(" \\___ Command member was NULL\n");
+                }
+
+                struct LinkedCommand *prev = cur;
+                cur = cur->next;
+                debug("Moved to the next linked node\n");
+                free(prev->elem);
+                free(prev);
+        }
+        debug("Starting\n");
 
         // Output buffer
+        // TODO: Serialize header
         normal("Writing the serialized commands buffer to a file...\n");
         const int written = fwrite(outBuf, 1, outSize, outFile);
         if(written != outSize) {
                 error("Error while writing delta: Expected to write %d bytes; wrote %d\n", 
                         outSize, written);
                 normal(" \\___ Reason: %s\n", strerror(errno));
-                // free(outBuf); // TODO: Uncomment because malloc
+                free(outBuf);
                 fclose(outFile); // Doesn't really matter if this fails
                 return EXIT_FAILURE; // TODO: Error code
         }
 
         if(ferror(outFile)) {
                 error("Error while reading src: %s\n", strerror(ferror(outFile)));
-                // free(outBuf); // TODO: Uncomment because malloc
+                free(outBuf);
                 fclose(outFile); // Doesn't really matter if this fails
                 return EXIT_FAILURE; // TODO: Error code
         }
 
         // Cleaning up
-        // free(outBuf);// TODO: Uncomment because malloc
+        normal("Finished outputing the delta\n");
+        free(outBuf);
         fclose(outFile); // Doesn't really matter if this fails
         return EXIT_SUCCESS;
 }

@@ -82,7 +82,6 @@ int patchSizeOf(const struct Command *command) {
 
 int serialSizeOf(const struct Command *command) {
         int commandType = command->type; // Might be garbage
-        // TODO: Check over these sizes
         switch (commandType) {
         case ADD_COMMAND:
                 return ADD_SERIAL_SIZE;
