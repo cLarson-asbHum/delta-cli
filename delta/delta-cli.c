@@ -23,6 +23,7 @@
 #define IGNORE_HASH_FLAG        (1u << (9))
 #define GARBAGE_EASTER_EGG_FLAG (1u << (10))
 #define PROMPT_FLAG             (1u << (11))
+#define PRESERVE_FLAG           (1u << (12))
 #define ERROR_FLAG              (1u << (30))
 
 uint32_t logFlags = 0; 
@@ -373,6 +374,11 @@ enum SlurpErr checkOpt(struct Slurped *out, int argc, char **argv)
                 return SLURP_SUCCESS;
         }
 
+        if (streq(arg, "--preserve", 11)) {
+                out->flags = (out->flags | PRESERVE_FLAG);
+                return SLURP_SUCCESS;
+        }
+
         return checkHelpOrVers(out, arg);
 }
 
@@ -620,7 +626,7 @@ FILE *attemptRFileOpen(char *filename, int maxCount)
 FILE *createWFile(char *filename) {
         FILE *file = fopen(filename, "wb");
         if (file == NULL) {
-                error("Error while create file: Could not create file \"s\" for writing\n",
+                error("Error while creating file: Could not create file \"s\" for writing\n",
                         filename);
                 return NULL;
         }
@@ -794,6 +800,17 @@ int freeLinked(struct LinkedCommand *head) {
         return i;
 }
 
+int nremove(const char *filename, int filenameLen) 
+{
+        // Getting the file name 
+        char *subName = malloc(sizeof(char) * (filenameLen + 1));
+        strncpy(subName, filename, filenameLen);
+        subName[filenameLen] = '\0';
+        const int status = remove(subName);
+        free(subName);
+        return status;
+}
+
 int computeDelta(struct Slurped *args) 
 {
         // Getting our output file
@@ -811,16 +828,20 @@ int computeDelta(struct Slurped *args)
         struct FileBin *s = readBin(args->posArg1, args->posArg1Len);
         if (s == NULL) {
                 verbose("Cancelled the delta computation.\n");
-                fclose(outFile); // Doesn't really matter if this fails
+                // Doesn't really matter if either of these fail:
+                if(fclose(outFile) == 0 && !(args->flags & PRESERVE_FLAG))
+                        nremove(args->outputFileName, args->outputLen);
                 return EXIT_FAILURE; // TODO: error code.
         }
         
         struct FileBin *t = readBin(args->posArg2, args->posArg2Len);
         if (t == NULL) {
                 verbose("Cancelled the delta computation.\n");
-                fclose(outFile); // Doesn't really matter if this fails
                 free(s->buf);
                 free(s);
+                // Doesn't really matter if either of these fail:
+                if(fclose(outFile) == 0 && !(args->flags & PRESERVE_FLAG))
+                        nremove(args->outputFileName, args->outputLen);
                 return EXIT_FAILURE; // TODO: error code.
         }
 
@@ -908,7 +929,9 @@ int computeDelta(struct Slurped *args)
         if (outBuf == NULL) {
                 error("Error while serializing: Could not allocate output buffer (size = %d bytes)\n",
                         outSize);
-                fclose(outFile); // Doesn't really matter if this fails
+                // Doesn't really matter if either of these fail:
+                if(fclose(outFile) == 0 && !(args->flags & PRESERVE_FLAG))
+                        nremove(args->outputFileName, args->outputLen);
                 freeLinked(head.next);
                 return EXIT_FAILURE;
         }
@@ -955,14 +978,20 @@ int computeDelta(struct Slurped *args)
                         outSize, written);
                 normal(" \\___ Reason: %s\n", strerror(errno));
                 free(outBuf);
-                fclose(outFile); // Doesn't really matter if this fails
+                // TODO: Create a flag that preserves a file even if it is incomplete
+                // Doesn't really matter if either of these fail:
+                if(fclose(outFile) == 0 && !(args->flags & PRESERVE_FLAG))
+                        nremove(args->outputFileName, args->outputLen);
                 return EXIT_FAILURE; // TODO: Error code
         }
 
         if (ferror(outFile)) {
                 error("Error while reading src: %s\n", strerror(ferror(outFile)));
                 free(outBuf);
-                fclose(outFile); // Doesn't really matter if this fails
+                // TODO: Create a flag that preserves a file even if it is incomplete
+                // Doesn't really matter if either of these fail:
+                if(fclose(outFile) == 0 && !(args->flags & PRESERVE_FLAG))
+                        nremove(args->outputFileName, args->outputLen);
                 return EXIT_FAILURE; // TODO: Error code
         }
 

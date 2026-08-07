@@ -85,6 +85,10 @@ Flags:
                     the program to exit with an error, unless either the
                     --prompt, -p, or --force-destination-delete flag is present.
 
+    --preserve      Prevents an output file from being deleted if there is any 
+                    content in it. By default, files were in the middle of a write
+                    when an error occurred will be deleted; this flag prevents that.
+
     -p --prompt     Prompts before allowing the output of delta or reconstruct to 
                     delete a conflicting file which has the same name as the 
                     output. This flag takes precedent over 
