@@ -29,14 +29,14 @@ void verboseCmdLog(const struct Command *command)
 {
         if (command->type == ADD_COMMAND && (getLogFlags() & VERBOSE_FLAG)) {
                 const char c = (char) (command->cmd.add.symbol);
-                const uint8_t qSet = command->cmd.add.curIndex.longVal;
+                const uint8_t qSet = command->cmd.add.tgtIndex.longVal;
                 verbose("   \\___ Command: ADD '%c' at %d \n", c, qSet);
                 return ;
         }
 
         if (command->type == MOVE_COMMAND && (getLogFlags() & VERBOSE_FLAG)) {
-                const uint64_t pSet = command->cmd.move.prevIndex.longVal;
-                const uint64_t qSet = command->cmd.move.curIndex.longVal;
+                const uint64_t pSet = command->cmd.move.srcIndex.longVal;
+                const uint64_t qSet = command->cmd.move.tgtIndex.longVal;
                 const uint64_t l    = command->cmd.move.len.longVal;
                 verbose("   \\___ Command: MOVE %d -> %d (length %d) \n", pSet, 
                         qSet, l);
@@ -84,9 +84,9 @@ uint64_t computeCmds(const struct FileBin *s, const struct FileBin *t,
                         &(t->buf[q]), t->size - q);
 
                 if (command->type == ADD_COMMAND) {
-                        command->cmd.add.curIndex.longVal = q;
+                        command->cmd.add.tgtIndex.longVal = q;
                 } else {
-                        command->cmd.move.curIndex.longVal = q;
+                        command->cmd.move.tgtIndex.longVal = q;
                 }
                 
                 verboseCmdLog(command);

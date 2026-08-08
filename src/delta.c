@@ -2,35 +2,35 @@
 
 #include <stdlib.h>
 
-struct Command *nextLargestMove(const uint8_t *previousSrc,
-                                uint64_t prevStart, uint64_t prevLen,
-                                const uint8_t *currentSrc, 
-                                uint64_t curMaxCount) 
+struct Command *nextLargestMove(const uint8_t *source,
+                                uint64_t srcStart, uint64_t srcLen,
+                                const uint8_t *target, 
+                                uint64_t tgtMaxCount) 
 {
-        if(prevStart >= prevLen || curMaxCount <= 0) {
+        if(srcStart >= srcLen || tgtMaxCount <= 0) {
                 return NULL;
         }
 
         // Finding the maximal l and its corresponding p
-        int p = prevStart; // Index in previousSrc
+        int p = srcStart; // Index in source
         int l = 0;         // Length of the move (0 if addition)
 
-        const int pStart = prevStart;
-        int pCur = prevStart;
+        const int pStart = srcStart;
+        int pCur = srcStart;
 
-        // Checking over every character in previousSrc, starting at pStart, 
-        // wrapping around if we hit the end of previousSrc, and ending when 
+        // Checking over every character in source, starting at pStart, 
+        // wrapping around if we hit the end of source, and ending when 
         // the next pCur is at pStart
-        while ((pCur + 1) % prevLen != pStart && curMaxCount > l) {
-                // Determine length of match between previousSrc[pCur....] 
-                // and currentSrc[q,...]
+        while ((pCur + 1) % srcLen != pStart && tgtMaxCount > l) {
+                // Determine length of match between source[pCur....] 
+                // and target[q,...]
                 int lCur = 0;
-                int inBounds = (pCur + lCur < prevLen) && (lCur < curMaxCount);
+                int inBounds = (pCur + lCur < srcLen) && (lCur < tgtMaxCount);
 
                 // TODO: Request more characters
-                while (inBounds && previousSrc[pCur + lCur] == currentSrc[lCur]) {
+                while (inBounds && source[pCur + lCur] == target[lCur]) {
                         lCur++;
-                        inBounds = (pCur + lCur < prevLen) && (lCur < curMaxCount);
+                        inBounds = (pCur + lCur < srcLen) && (lCur < tgtMaxCount);
                 }
 
                 if (lCur > l) {
@@ -39,8 +39,8 @@ struct Command *nextLargestMove(const uint8_t *previousSrc,
                         p = pCur;
                 }
 
-                // Wrapping back to the start if we reach the end of previousSrc
-                pCur = (pCur + 1) % prevLen;
+                // Wrapping back to the start if we reach the end of source
+                pCur = (pCur + 1) % srcLen;
         }
 
         // Formatting our result as a command
@@ -50,15 +50,15 @@ struct Command *nextLargestMove(const uint8_t *previousSrc,
         if(l == 0) {
                 result->type = ADD_COMMAND;
                 
-                // NOTE: Consumers MUST override the value of curIndex
-                result->cmd.add.curIndex.longVal = 0;
-                result->cmd.add.symbol = currentSrc[0];
+                // NOTE: Consumers MUST override the value of tgtIndex
+                result->cmd.add.tgtIndex.longVal = 0;
+                result->cmd.add.symbol = target[0];
         } else {
                 result->type = MOVE_COMMAND;
                 
-                // NOTE: Consumers MUST override the value of curIndex
-                result->cmd.move.curIndex.longVal = 0;
-                result->cmd.move.prevIndex.longVal = p;
+                // NOTE: Consumers MUST override the value of tgtIndex
+                result->cmd.move.tgtIndex.longVal = 0;
+                result->cmd.move.srcIndex.longVal = p;
                 result->cmd.move.len.longVal = l;
         }
 
@@ -95,16 +95,16 @@ int serialSizeOf(const struct Command *command) {
         }
 }
 
-int patchMove(const uint8_t *previousSrc, uint64_t prevLen, uint8_t *out, 
+int patchMove(const uint8_t *source, uint64_t srcLen, uint8_t *out, 
               uint64_t outLen, const struct MoveCommand *move) 
 {
-        const uint64_t prevI = move->prevIndex.longVal;
-        const uint64_t outI = move->curIndex.longVal;
-        const uint64_t len = move->len.longVal;
+        const uint64_t srcI = move->srcIndex.longVal;
+        const uint64_t outI = move->tgtIndex.longVal;
+        const uint64_t len  = move->len.longVal;
         uint64_t i = 0;
 
-        while((i < len) && (prevI + i < prevLen) && (outI + i < outLen)) {
-                out[outI + i] = previousSrc[prevI + i];
+        while((i < len) && (srcI + i < srcLen) && (outI + i < outLen)) {
+                out[outI + i] = source[srcI + i];
                 i++;
         }
 
@@ -113,20 +113,20 @@ int patchMove(const uint8_t *previousSrc, uint64_t prevLen, uint8_t *out,
 
 int patchAdd(uint8_t *out, uint64_t outLen, const struct AddCommand *add) 
 {
-        if(add->curIndex.longVal >= outLen) {
+        if(add->tgtIndex.longVal >= outLen) {
                 return 0;
         }
 
-        out[add->curIndex.longVal] = add->symbol;
+        out[add->tgtIndex.longVal] = add->symbol;
         return 1;
 }
 
-int patchCommand(const uint8_t *previousSrc, uint64_t prevLen, uint8_t *out, 
+int patchCommand(const uint8_t *source, uint64_t srcLen, uint8_t *out, 
         uint64_t outLen, const struct Command *command) 
 {
         switch (command->type) {
         case MOVE_COMMAND:
-                return patchMove(previousSrc, prevLen, out, outLen, 
+                return patchMove(source, srcLen, out, outLen, 
                         &(command->cmd.move));
         
         case ADD_COMMAND:
@@ -153,7 +153,7 @@ uint8_t determineEndian() {
         return val.b[3];
 }
 
-// Deserializes a little-endian formatted long from a buffer into a SerialLong
+// Serializes a little-endian formatted long from a buffer into a SerialLong
 // respecting the system's endianness.
 int littleSerialize(uint8_t *buf, uint64_t bufSize, uint64_t start, 
         const union SerialLong *num) 
@@ -187,7 +187,7 @@ int serializeAdd(uint8_t *buf, uint64_t bufSize, uint64_t start,
         buf[start] = (uint8_t) ADD_COMMAND;
         buf[start + 1] = add->symbol;
         const int read = littleSerialize(buf, bufSize, start + 2, 
-                &(add->curIndex));
+                &(add->tgtIndex));
         return 2 + read; // Assuming all went right, this equals ADD_SERIAL_SIZE
 }
 
@@ -202,19 +202,17 @@ int serializeMove(uint8_t *buf, uint64_t bufSize, uint64_t start,
         buf[i] = (uint8_t) MOVE_COMMAND;
         i++;
 
-        // Serializing the previous index
-        const int prevIndexRet = littleSerialize(buf, bufSize, i, 
-                &(move->prevIndex));
-        if(prevIndexRet != 8) {
-                return i + prevIndexRet;
+        // Serializing the source index
+        const int srcIndexRet = littleSerialize(buf, bufSize, i, &(move->srcIndex));
+        if(srcIndexRet != 8) {
+                return i + srcIndexRet;
         }
         i += 8;
                 
-        // Serializing the current index
-        const int curIndexRet = littleSerialize(buf, bufSize, i, 
-                &(move->curIndex));
-        if(curIndexRet != 8) {
-                return i + curIndexRet;
+        // Serializing the target index
+        const int tgtIndexRet = littleSerialize(buf, bufSize, i, &(move->tgtIndex));
+        if(tgtIndexRet != 8) {
+                return i + tgtIndexRet;
         }
         i += 8;
                 
@@ -275,19 +273,18 @@ int deserializeMove(const uint8_t *buf, uint64_t bufSize, uint64_t start,
 
         uint64_t i = start;
 
-        // Serializing the previous index
-        const int prevIndexRet = littleDeserialize(buf, bufSize, i, 
-                &(move->prevIndex));
-        if(prevIndexRet != 8) {
-                return i + prevIndexRet;
+        // Serializing the source index
+        const int srcIndexRet = littleDeserialize(buf, bufSize, i, &(move->srcIndex));
+        if(srcIndexRet != 8) {
+                return i + srcIndexRet;
         }
         i += 8;
                 
-        // Serializing the current index
-        const int curIndexRet = littleDeserialize(buf, bufSize, i, 
-                &(move->curIndex));
-        if(curIndexRet != 8) {
-                return i + curIndexRet;
+        // Serializing the target index
+        const int tgtIndexRet = littleDeserialize(buf, bufSize, i, 
+                &(move->tgtIndex));
+        if(tgtIndexRet != 8) {
+                return i + tgtIndexRet;
         }
         i += 8;
                 
@@ -304,7 +301,7 @@ int deserializeAdd(const uint8_t *buf, uint64_t bufSize, uint64_t start,
         }
 
         add->symbol = buf[start];
-        const int read = littleDeserialize(buf, bufSize, start + 1, &(add->curIndex));
+        const int read = littleDeserialize(buf, bufSize, start + 1, &(add->tgtIndex));
         return 1 + read; // This should always equal ADD_SERIAL_SIZE
 }
 

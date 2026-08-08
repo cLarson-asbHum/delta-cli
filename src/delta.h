@@ -19,21 +19,21 @@ union SerialLong {
         uint8_t bytes[8];
 };
 
-// Indicates that a part of the previous will be moved to the specified index.
+// Indicates that a part of the source will be moved to the specified index.
 // Moves can overlap with one another, which allows for deletions.
 struct MoveCommand
 {
-        union SerialLong prevIndex; // Where the substring was in the previousSrc string
-        union SerialLong curIndex;  // Where the substring is in the currentSrc string
-        union SerialLong len;       // How long the substring
+        union SerialLong srcIndex; // Where the substring was in the source string
+        union SerialLong tgtIndex; // Where the substring is in the target string
+        union SerialLong len;      // How long the substring
 };
 
-// Indicates that a specific symbol present in current was not present in
-// previous.
+// Indicates that a specific symbol present in target was not present in
+// source.
 struct AddCommand
 {
         uint8_t symbol;
-        union SerialLong curIndex; // Where the symbol is in the currentSrc string
+        union SerialLong tgtIndex; // Where the symbol is in the target string
 };
 
 enum CommandType
@@ -54,18 +54,16 @@ struct Command
 };
 
 // Computes the largest block move, as described by procedure L in Tichy (page 8).
-// If either curMaxCount is 0, or prevStart is greater than or equal to prevLen,
+// If either tgtMaxCount is 0, or srcStart is greater than or equal to srcLen,
 // this returns NULL.
 //
-// previousSrc  - pointer to the first byte the previous src
-// prevStart    - Index to start at in previous src
-// prevLen      - length of previous src
-// currentSrc   - pointer to the first byte of the prefix (start of L in Tichy)
-// curMaxCount  - maximum length of the prefix
-struct Command *nextLargestMove(const uint8_t *previousSrc,
-                                uint64_t prevStart, uint64_t prevLen,
-                                const uint8_t *currentSrc, 
-                                uint64_t curMaxCount);
+// source   - pointer to the first byte of the source string
+// srcStart - Index to start at in the source string
+// srcLen   - length of the source string
+// target   - pointer to the first byte of the prefix (start of L in Tichy)
+// tgtMaxCount - maximum length of the prefix
+struct Command *nextLargestMove(const uint8_t *source, uint64_t srcStart, 
+        uint64_t srcLen, const uint8_t *target, uint64_t tgtMaxCount);
 
 // Performs the operation specified by the command, outputing in the specified
 // buffer. This returns the number of bytes written as a result of command. If
@@ -73,14 +71,14 @@ struct Command *nextLargestMove(const uint8_t *previousSrc,
 // (most likely the end of a buffer, either input or output, was unexpectedly 
 // reached).
 //
-// previousSrc - pointer to the first byte of the buffer onto which the patch 
+// source  - pointer to the first byte of the buffer onto which the patch 
 //               command is applied
-// prevLen - length of previous src, in number of chars
+// srcLen  - length of the source string
 // out     - output destination of the command. Existing bytes in the 
 //           command's domain will be overridden; all others are unmodified
 // outLen  - length of out, in number of chars
 // command - the patch command to apply and write to out
-int patchCommand(const uint8_t *previousSrc, uint64_t prevLen,
+int patchCommand(const uint8_t *source, uint64_t srcLen,
                  uint8_t *out, uint64_t outLen, 
                  const struct Command *command);
 
@@ -89,10 +87,10 @@ int patchCommand(const uint8_t *previousSrc, uint64_t prevLen,
 // struct member. If the type is garbage data, then this returns -1.
 int patchSizeOf(const struct Command *command);
 
-// ||Type byte|| + ||symbol|| + ||curIndex||, 
+// ||Type byte|| + ||symbol|| + ||tgtIndex||, 
 #define ADD_SERIAL_SIZE (1 + 1 + 8)
 
-// ||Type byte|| + ||prevIndex|| + ||curIndex|| + ||len||
+// ||Type byte|| + ||srcIndex|| + ||tgtIndex|| + ||len||
 #define MOVE_SERIAL_SIZE (1 + 8 + 8 + 8)
 
 #define MAGIC_NUMBER ({ 'D', 'L', 'T', 'A'  })
@@ -116,8 +114,8 @@ struct Version1Header {
         uint8_t moveCommandSym;    // 'M' in version 1
         uint8_t addCommandSym;     // 'A' in version 1
         uint8_t cmdLensEqual;      // 1 iff serialSizeOf is equal for all CommandTypes
-        union Sha256 previousSrcHash; // for the file used to reconstruct
-        union Sha256 currentSrcHash;  // for the output of reconstruction
+        union Sha256 sourceHash;   // for the file used to reconstruct
+        union Sha256 targetHash;   // for the output of reconstruction
         union SerialLong outputSize;   // reconstructed file's length, in bytes
         uint8_t commentSubChunk[4];    // MUST always be COMMENT_CHUNK_NAME
         union SerialLong commentSize;  // in bytes
