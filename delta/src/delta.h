@@ -12,7 +12,7 @@
 #define DELTA_H
 
 #include <stdint.h>
-#include "../hash.h"
+#include "hash.h"
 
 union SerialLong {
         uint64_t longVal;

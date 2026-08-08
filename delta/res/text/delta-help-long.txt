@@ -110,8 +110,9 @@ Flags:
 
 Troubleshooting:
 
-    - Ensure the %DELTA_CLI_HOME% is set to the directory with delta-cli.exe at 
-    its top. 
+    - Ensure the %DELTA_CLI_HOME% is set to the directory with README.md at 
+    its top. %DELTA_CLI_HOME%/res/text/delta-help-long.txt should resolve to this 
+    exact file.
 
     - The first argument to this program must always be a command described in the 
     above "Commands" section; otherwise, this help message will be printed. 

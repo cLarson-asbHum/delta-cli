@@ -1,0 +1,60 @@
+#ifndef SLURP_ARG_H
+#define SLURP_ARG_H
+
+#include <stdint.h>
+
+#define MAX_FILE_PATH_LEN 512
+
+#define HELP_FLAG               (1u << (0))
+#define VERSION_FLAG            (1u << (1))
+#define DELTA_FLAG              (1u << (2))
+#define RECONSTRUCT_FLAG        (1u << (3))
+#define VERBOSE_FLAG            (1u << (4))
+#define QUIET_FLAG              (1u << (5))
+#define SILENT_FLAG             (1u << (6))
+#define OUTPUT_FLAG             (1u << (7))
+#define DESTINATION_DELETE_FLAG (1u << (8))
+#define IGNORE_HASH_FLAG        (1u << (9))
+#define GARBAGE_EASTER_EGG_FLAG (1u << (10))
+#define PROMPT_FLAG             (1u << (11))
+#define PRESERVE_FLAG           (1u << (12))
+#define ERROR_FLAG              (1u << (30))
+
+struct Slurped {
+        uint32_t flags;
+        uint32_t outputLen;
+        char *outputFileName;
+        uint32_t posArg1Len;
+        char *posArg1;
+        uint32_t posArg2Len;
+        char *posArg2;
+};
+
+enum SlurpErr {
+        SLURP_SUCCESS = 0,
+        
+        UNKNOWN_COMMAND         = -1,
+        UNKNOWN_FLAG_OR_ARG     = -2,
+        ZERO_LENGTH_OUTPUT_PATH = -3,
+        MISSING_POS_ARG         = -4,
+        TOO_MANY_POS_ARGS       = -5,
+        
+        FORCE_BREAK = -100,  // For internal use when slurping only
+        CONTINUE    = -101,  // For internal use when slurping only
+        GARBAGE_SUCCESS_WITH_ERR_FLAG   = -1000,
+        GARBAGE_ERR_WITHOUT_ERR_FLAG    = -1001,
+};
+
+uint32_t getSlurpIndex(void);
+
+uint8_t minPosArgs(uint32_t flags);
+
+uint8_t maxPosArgs(uint32_t flags);
+
+enum SlurpErr slurpArgs(struct Slurped *out, int argc, char **argv);
+
+// Displays a message for the slurpErr variable. Returns SLURP_SUCCESS if there 
+// was no error to begin with
+enum SlurpErr displayErr(uint32_t flags, char **argv, enum SlurpErr err, int i);
+
+#endif
