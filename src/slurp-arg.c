@@ -1,7 +1,7 @@
 #include <stdlib.h>
 #include <string.h>
+#include "log-level.h"
 #include "slurp-arg.h"
-#include "delta-cli.h"
 
 // a million, or 'round-about there
 #define LOOP_MAX 1000000

@@ -5,7 +5,7 @@
 #include "slurp-arg.h"
 #include "delta-command.h"
 #include "delta.h"
-#include "delta-cli.h"
+#include "file-helper.h"
 
 struct LinkedCommand {
         struct Command *elem;
