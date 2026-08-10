@@ -132,7 +132,7 @@ uint64_t computeCmdsFromArgs(const struct Slurped *args, struct LinkedCommand *h
 
 // Returns EXIT_SUCCESS if successful; EXIT_FAILURE otherwise. Error messages are
 // printed on error
-uint32_t outputHeaderV1(FILE *outFile, const struct Version1Header *header)
+uint32_t outputHeaderV1(FILE *outFile, const struct DeltaHeader *header)
 {
         const uint64_t outSize = V1_HEADER_RAW_SIZE;
         debug("Allocating %d bytes for header\n", outSize);
@@ -155,23 +155,24 @@ uint32_t outputHeaderV1(FILE *outFile, const struct Version1Header *header)
         i += 3;
         outBuf[i] = header->versionId;
         i += 1;
-
-        debug("Serializing the meta chunk (index = %d)\n", i);
-        memcpy(&outBuf[i],  header->metaChunk, 4);
-        i += 4;
-        littleSerialize(&outBuf[i], 8, 0, &header->metaSize);
-        i += 8;
-        memcpy(&outBuf[i], header->sourceHash.bytes, 32);
-        i += 32;
-        memcpy(&outBuf[i], header->targetHash.bytes, 32);
-        i += 32;
         littleSerialize(&outBuf[i], 8, 0, &header->targetSize);
         i += 8;
-        outBuf[i] = header->cmdLensEqual;
+
+        const struct Version1Header v1 = header->header.v1; 
+        debug("Serializing the meta chunk (index = %d)\n", i);
+        memcpy(&outBuf[i],  v1.metaChunk, 4);
+        i += 4;
+        littleSerialize(&outBuf[i], 8, 0, &v1.metaSize);
+        i += 8;
+        memcpy(&outBuf[i], v1.sourceHash.bytes, 32);
+        i += 32;
+        memcpy(&outBuf[i], v1.targetHash.bytes, 32);
+        i += 32;
+        outBuf[i] = v1.cmdLensEqual;
         i += 1;
-        outBuf[i] = header->moveCommandSym;
+        outBuf[i] = v1.moveCommandSym;
         i += 1;
-        outBuf[i] = header->addCommandSym;
+        outBuf[i] = v1.addCommandSym;
         i += 1;
         outBuf[i] = (uint8_t) 0xffu;
         i += 1;
@@ -203,24 +204,25 @@ uint32_t outputHeaderV1(FILE *outFile, const struct Version1Header *header)
 
 uint32_t writeHeader(const struct Slurped *args, FILE *outFile, uint64_t dataSize) 
 {
-        struct Version1Header header = {
-                .magicNumber    = MAGIC_NUMBER,
-                .versPseudoChunk   = VERSION_CHUNK_NAME,
-                .versionId      = 1,
-
-                .metaChunk      = META_CHUNK_NAME,
-                .metaSize       = META_V1_SIZE,
-                .sourceHash     = NULL_SHA,
-                .targetHash     = NULL_SHA,
-                .targetSize     = -1, // NOTE: Overridden in a moment
-                .moveCommandSym = MOVE_COMMAND,
-                .addCommandSym  = ADD_COMMAND,
-                .cmdLensEqual   = 0,
-                // padding is always serialized as 0xff in outputHeaderV1
-
-                .dataChunkName  = DATA_CHUNK_NAME,
-                .dataSize       = dataSize
+        struct DeltaHeader header = {
+                .magicNumber     = MAGIC_NUMBER,
+                .versPseudoChunk = VERSION_CHUNK_NAME,
+                .versionId       = 1,
+                .targetSize      = -1, // Gets overridden a few lines down
+                .header.v1       = {
+                        .metaChunk      = META_CHUNK_NAME,
+                        .metaSize       = META_V1_SIZE,
+                        .sourceHash     = NULL_SHA,
+                        .targetHash     = NULL_SHA,
+                        .moveCommandSym = MOVE_COMMAND,
+                        .addCommandSym  = ADD_COMMAND,
+                        .cmdLensEqual   = 0
+                        // padding is always serialized as 0xff in outputHeaderV1
+                },
+                .dataChunkName   = DATA_CHUNK_NAME,
+                .dataSize        = dataSize
         };
+        struct Version1Header *v1 = &header.header.v1;
 
         // Getting file length 
         verbose("Opening target as readonly (to get its size)\n");

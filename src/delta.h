@@ -95,6 +95,7 @@ int patchSizeOf(const struct Command *command);
 
 #define MAGIC_NUMBER { 'D', 'L', 'T', 'A'  }
 #define VERSION_CHUNK_NAME { 'v', 'r', 's' }
+#define CURRENT_VERSION 1
 #define META_CHUNK_NAME { 'm', 'e', 't', 'a' }
 #define DATA_CHUNK_NAME { 'd', 'a', 't', 'a' } 
 
@@ -108,21 +109,28 @@ int patchSizeOf(const struct Command *command);
 // file. All multi-byte numbers (including those in the data) are 
 // little-endian.
 struct Version1Header {
-        // Top-level info
-        uint8_t magicNumber[4];     // MUST always be MAGIC_NUMBER
-        uint8_t versPseudoChunk[3]; // MUST always be VERSION_CHUNK_NAME
-        uint8_t versionId;
-
         // Meta data
         uint8_t metaChunk[4];    // MUST always be META_CHUNK_NAME
         union SerialLong metaSize;
         union Sha256 sourceHash; // for the file used to reconstruct
         union Sha256 targetHash; // for the output of reconstruction
-        union SerialLong targetSize; // reconstructed file's length, in bytes
         uint8_t cmdLensEqual;    // 1 iff serialSizeOf is equal for all CommandTypes
         uint8_t moveCommandSym;  // 'M' in version 1
         uint8_t addCommandSym;   // 'A' in version 1
         uint8_t paddingNoOneShouldEverReadOrWriteTo; // Aligns us to 16 bytes
+};
+
+struct DeltaHeader {
+        // Top-level info
+        uint8_t magicNumber[4];     // MUST always be MAGIC_NUMBER
+        uint8_t versPseudoChunk[3]; // MUST always be VERSION_CHUNK_NAME
+        uint8_t versionId;
+        union SerialLong targetSize; // reconstructed file's length, in bytes
+
+        // Version-specific chunks
+        union {
+                struct Version1Header v1;
+        } header;
 
         // Actual data (commands)
         uint8_t dataChunkName[4];  // MUST always be DATA_CHUNK_NAME
