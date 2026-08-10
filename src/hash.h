@@ -7,6 +7,11 @@
 
 #include <stdio.h>
 
+// A SHA that is used as a placeholder. A warning should be issued if
+// a null SHA is detected and the --ignore-hash flag is not present. An
+// error must be thrown if a null sha collision is *generated*
+#define NULL_HASH { .longs = {0,0,0,0} }
+
 // Little-endian 256-bit digest of a SHA-2 hash
 union Sha256 {
         uint8_t bytes[32];

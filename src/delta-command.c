@@ -130,6 +130,130 @@ uint64_t computeCmdsFromArgs(const struct Slurped *args, struct LinkedCommand *h
         return outSize;
 }
 
+// Returns EXIT_SUCCESS if successful; EXIT_FAILURE otherwise. Error messages are
+// printed on error
+uint32_t outputHeaderV1(FILE *outFile, const struct Version1Header *header)
+{
+        const uint64_t outSize = V1_HEADER_RAW_SIZE;
+        debug("Allocating %d bytes for header\n", outSize);
+        uint8_t *outBuf = malloc(outSize);
+
+        if (outBuf == NULL) {
+                error("Error while serializing header: Could not allocate %d bytes\n", 
+                        outSize);
+                return EXIT_FAILURE;
+        }
+
+        // Serializing the header
+        // WARNING: We assume all the header data is initialized and outBuf is large enough
+        verbose("Serializing v1 header\n");
+        debug("Serializing the top level data (index = 0)\n");
+        uint32_t i = 0;
+        memcpy(&outBuf[i], header->magicNumber,  4);
+        i += 4;
+        memcpy(&outBuf[i], header->versPseudoChunk, 3);
+        i += 3;
+        outBuf[i] = header->versionId;
+        i += 1;
+
+        debug("Serializing the meta chunk (index = %d)\n", i);
+        memcpy(&outBuf[i],  header->metaChunk, 4);
+        i += 4;
+        littleSerialize(&outBuf[i], 8, 0, &header->metaSize);
+        i += 8;
+        memcpy(&outBuf[i], header->sourceHash.bytes, 32);
+        i += 32;
+        memcpy(&outBuf[i], header->targetHash.bytes, 32);
+        i += 32;
+        littleSerialize(&outBuf[i], 8, 0, &header->targetSize);
+        i += 8;
+        outBuf[i] = header->cmdLensEqual;
+        i += 1;
+        outBuf[i] = header->moveCommandSym;
+        i += 1;
+        outBuf[i] = header->addCommandSym;
+        i += 1;
+        outBuf[i] = (uint8_t) 0xffu;
+        i += 1;
+
+        debug("Serializing the data head (index = %d)\n", i);
+        memcpy(&outBuf[i], header->dataChunkName, 4);
+        i += 4;
+        littleSerialize(&outBuf[i], 8, 0, &header->dataSize);
+        i += 8;
+        debug("Wrote %d bytes for V1 header\n", i);
+        if(i != outSize) {
+                error("Error while serializing header: Expected to write %d bytes; wrote %d\n", 
+                        outSize, i);
+                return EXIT_FAILURE;
+        }
+
+        // Writing the serialized buffer to the output file
+        verbose("Writing v1 header to out file\n");
+        const int written = fwrite(outBuf, 1, outSize, outFile);
+        if (written != outSize || ferror(outFile)) {
+                error("Error while writing header: %s\n", strerror(ferror(outFile)));
+                free(outBuf);
+                return EXIT_FAILURE;
+        }
+
+        free(outBuf);
+        return EXIT_SUCCESS;
+}
+
+uint32_t writeHeader(const struct Slurped *args, FILE *outFile, uint64_t dataSize) 
+{
+        struct Version1Header header = {
+                .magicNumber    = MAGIC_NUMBER,
+                .versPseudoChunk   = VERSION_CHUNK_NAME,
+                .versionId      = 1,
+
+                .metaChunk      = META_CHUNK_NAME,
+                .metaSize       = META_V1_SIZE,
+                .sourceHash     = NULL_SHA,
+                .targetHash     = NULL_SHA,
+                .targetSize     = -1, // NOTE: Overridden in a moment
+                .moveCommandSym = MOVE_COMMAND,
+                .addCommandSym  = ADD_COMMAND,
+                .cmdLensEqual   = 0,
+                // padding is always serialized as 0xff in outputHeaderV1
+
+                .dataChunkName  = DATA_CHUNK_NAME,
+                .dataSize       = dataSize
+        };
+
+        // Getting file length 
+        verbose("Opening target as readonly (to get its size)\n");
+        FILE *tgt = attemptRFileOpen(args->posArg2, args->posArg2Len);
+        if (tgt == NULL) {
+                verbose("Cancelled header write\n");
+                return EXIT_FAILURE;
+        }
+
+        header.targetSize.longVal = fileLength(tgt);
+
+        verbose("Target Size: %d bytes\n", header.targetSize.longVal);
+        verbose("Closing the aforementioned read-only target file\n");
+        if (fclose(tgt) != 0) {
+                error("Error while formatting header: Could not close target file\n");
+                loud(" \\___ Reason: %s\n", strerror(ferror(tgt)));
+                return EXIT_FAILURE;
+        }
+
+        // Generating file hashes
+        // FIXME: We don't currently support file hashing here, so we default to ignore
+        debug("Ignore hash flag: %08x\n", args->flags & IGNORE_HASH_FLAG);
+        if (1 || (args->flags & IGNORE_HASH_FLAG)) {
+                loud("Warning: Ignoring hash generation for source and target files\n");
+                normal(" \\___ The reconstructed target could possibly be silently corrupted as a result\n");
+                // TODO: Warnings-as-errors flag
+        }
+
+        // Writing the header
+        verbose("Writing the header to the output file\n");
+        return outputHeaderV1(outFile, &header);
+}
+
 uint64_t serializeCmds(uint8_t *outBuf, uint64_t bufSize, 
         struct LinkedCommand *head) 
 {
@@ -182,6 +306,15 @@ int computeDelta(const struct Slurped *args)
                 closeMaybeRemove(outFile, args);
                 return EXIT_FAILURE;
         }
+        
+        // Generating a header, and writing it to our file
+        const uint32_t headRet = writeHeader(args, outFile, outSize);
+        if (headRet != EXIT_SUCCESS) {
+                verbose("Cancelled the delta computation\n");
+                freeLinked(head.next);
+                closeMaybeRemove(outFile, args);
+                return EXIT_FAILURE;
+        }
 
         // Allocating our destination for serialization
         normal("Serializing the commands... (this may take a while)\n");
@@ -206,9 +339,6 @@ int computeDelta(const struct Slurped *args)
                 return EXIT_FAILURE;
         }
         freeLinked(head.next);
-
-        // TODO: Format header
-        // TODO: Write header
 
         // Writing the serialized output to a file.
         normal("Writing the serialized commands buffer to a file...\n");

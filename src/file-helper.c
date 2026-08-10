@@ -74,6 +74,11 @@ FILE *createWFile(char *filename)
         return file;
 }
 
+uint64_t fileLength(FILE *file) 
+{
+        return _filelength(_fileno(file));
+}
+
 struct FileBin *readBin(char *filename, int filenameLen)
 {
         // NOTE: This uses the Win _fileno() function to create a buffer
@@ -83,7 +88,7 @@ struct FileBin *readBin(char *filename, int filenameLen)
                 return NULL;
         }
 
-        const long srcSize = _filelength(_fileno(src));
+        const uint64_t srcSize = fileLength(src);
         if (srcSize <= 0) {
                 error("Error while reading src: Source file length was 0 or an error.\n");
                 // TODO: Err code  should be set somewhere

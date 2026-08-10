@@ -26,6 +26,8 @@ FILE *attemptRFileOpen(char *filename, int maxCount);
 // The returned file must be closed with `fclose()` after usage
 FILE *createWFile(char *filename); 
 
+uint64_t fileLength(FILE *file);
+
 // Puts the entire contents of a read-only file into a byte buffer.
 // This buffer MUST be freed after its used. This returns NULL if any error 
 // occurs
