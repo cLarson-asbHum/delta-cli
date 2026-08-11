@@ -5,6 +5,7 @@
 #include "slurp-arg.h"
 #include "file-helper.h"
 #include "delta-command.h"
+#include "reconstruct-command.h"
 
 // a million, or 'round-about there
 #define LOOP_MAX 1000000
@@ -43,10 +44,6 @@ int displayVersion()
         printf("delta-cli 0.0.0 | Connor Larson, 2026 | MIT license\n");
 }
 
-int reconstructTarget(struct Slurped *args) 
-{      
-        return EXIT_SUCCESS;
-}
 
 int main(int argc, char **argv) 
 {

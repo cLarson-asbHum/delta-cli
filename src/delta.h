@@ -99,11 +99,12 @@ int patchSizeOf(const struct Command *command);
 #define META_CHUNK_NAME { 'm', 'e', 't', 'a' }
 #define DATA_CHUNK_NAME { 'd', 'a', 't', 'a' } 
 
+#define V1_META_PADDING (3)
 // Value for the Version1Header metaSize member. 
-#define META_V1_SIZE (32 + 32 + 8 + 1 + 1 + 1 + 1)
+#define V1_META_SIZE (32 + 32 + 8 + 1 + V1_META_PADDING)
 
 // Size of the header for version 1 files.
-#define V1_HEADER_RAW_SIZE (4 + 3 + 1 + 4 + 8 + META_V1_SIZE + 4 + 8)
+#define V1_DELTA_HEADER_SIZE (4 + 3 + 1 + 4 + 8 + V1_META_SIZE + 4 + 8)
 
 // All of the bytes that come before the actual data. This is a RIFF-like
 // file. All multi-byte numbers (including those in the data) are 
@@ -115,9 +116,9 @@ struct Version1Header {
         union Sha256 sourceHash; // for the file used to reconstruct
         union Sha256 targetHash; // for the output of reconstruction
         uint8_t cmdLensEqual;    // 1 iff serialSizeOf is equal for all CommandTypes
-        uint8_t moveCommandSym;  // 'M' in version 1
-        uint8_t addCommandSym;   // 'A' in version 1
-        uint8_t paddingNoOneShouldEverReadOrWriteTo; // Aligns us to 16 bytes
+        
+        // Padding which aligns the meta chunk size to 16 bytes:
+        uint8_t paddingNoOneShouldEverReadOrWriteTo[V1_META_PADDING];
 };
 
 struct DeltaHeader {
@@ -127,10 +128,14 @@ struct DeltaHeader {
         uint8_t versionId;
         union SerialLong targetSize; // reconstructed file's length, in bytes
 
+        /* ... other chunks (if any) ... */
+
         // Version-specific chunks
         union {
                 struct Version1Header v1;
         } header;
+
+        /* ... other chunks (if any) ... */
 
         // Actual data (commands)
         uint8_t dataChunkName[4];  // MUST always be DATA_CHUNK_NAME

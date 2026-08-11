@@ -134,7 +134,7 @@ uint64_t computeCmdsFromArgs(const struct Slurped *args, struct LinkedCommand *h
 // printed on error
 uint32_t outputHeaderV1(FILE *outFile, const struct DeltaHeader *header)
 {
-        const uint64_t outSize = V1_HEADER_RAW_SIZE;
+        const uint64_t outSize = V1_DELTA_HEADER_SIZE;
         debug("Allocating %d bytes for header\n", outSize);
         uint8_t *outBuf = malloc(outSize);
 
@@ -170,12 +170,10 @@ uint32_t outputHeaderV1(FILE *outFile, const struct DeltaHeader *header)
         i += 32;
         outBuf[i] = v1.cmdLensEqual;
         i += 1;
-        outBuf[i] = v1.moveCommandSym;
-        i += 1;
-        outBuf[i] = v1.addCommandSym;
-        i += 1;
-        outBuf[i] = (uint8_t) 0xffu;
-        i += 1;
+        for(uint32_t p = 0; p < V1_META_PADDING; p++) {
+                outBuf[i] = (uint8_t) 0xffu;
+                i++;
+        }
 
         debug("Serializing the data head (index = %d)\n", i);
         memcpy(&outBuf[i], header->dataChunkName, 4);
@@ -211,11 +209,9 @@ uint32_t writeHeader(const struct Slurped *args, FILE *outFile, uint64_t dataSiz
                 .targetSize      = -1, // Gets overridden a few lines down
                 .header.v1       = {
                         .metaChunk      = META_CHUNK_NAME,
-                        .metaSize       = META_V1_SIZE,
+                        .metaSize       = V1_META_SIZE,
                         .sourceHash     = NULL_SHA,
                         .targetHash     = NULL_SHA,
-                        .moveCommandSym = MOVE_COMMAND,
-                        .addCommandSym  = ADD_COMMAND,
                         .cmdLensEqual   = 0
                         // padding is always serialized as 0xff in outputHeaderV1
                 },

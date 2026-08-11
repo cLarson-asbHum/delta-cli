@@ -90,13 +90,13 @@ struct FileBin *readBin(char *filename, int filenameLen)
 
         const uint64_t srcSize = fileLength(src);
         if (srcSize <= 0) {
-                error("Error while reading src: Source file length was 0 or an error.\n");
+                error("Error while reading from file: Source file length was 0 or an error.\n");
                 // TODO: Err code  should be set somewhere
                 return NULL;
         }
         uint8_t *srcBuf = malloc(srcSize);
         if (srcBuf == NULL) {
-                error("Error while reading src: Failed to allocate %d bytes\n", 
+                error("Error while reading from file: Failed to allocate %d bytes\n", 
                         srcSize);
                 free(srcBuf);
                 // TODO: Failure should be set somewhere
@@ -106,7 +106,7 @@ struct FileBin *readBin(char *filename, int filenameLen)
         normal("Reading from \"%s\"... (this may take awhile)\n", filename);
         const int srcRead = fread((void *) srcBuf, 1, srcSize, src);
         if (srcRead != srcSize) {
-                error("Error while reading src: Expected to read %d bytes; read %d\n", 
+                error("Error while reading from file: Expected to read %d bytes; read %d\n", 
                         srcSize, srcRead);
                 normal(" \\___ Reason: %s\n", strerror(errno));
                 free(srcBuf);
@@ -115,7 +115,7 @@ struct FileBin *readBin(char *filename, int filenameLen)
         }
 
         if (ferror(src)) {
-                error("Error while reading src: %s\n", strerror(ferror(src)));
+                error("Error while reading from file: %s\n", strerror(ferror(src)));
                 free(srcBuf);
                 // TODO: Err code should be set somewhere
                 return NULL;
@@ -124,7 +124,7 @@ struct FileBin *readBin(char *filename, int filenameLen)
         fclose(src);
 
         if (ferror(src)) {
-                error("Error while reading src: %s\n", strerror(ferror(src)));
+                error("Error while reading from file: %s\n", strerror(ferror(src)));
                 free(srcBuf);
                 // TODO: Err code should be set somewhere
                 return NULL;
