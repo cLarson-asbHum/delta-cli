@@ -28,14 +28,14 @@ uint64_t findChunk(const struct FileBin *delta, uint64_t start,
                 // Comparing the chunk name against the specified
                 union SerialDword curName = { .str = {0,0,0,0,0} };
                 memcpy(curName.str, &buf[start], 4);
-                verbose("Byte %d: Checking whether '%s' is '%s'\n", start, 
+                verbose("Byte %llu: Checking whether '%s' is '%s'\n", start, 
                         curName.str, exp.str);
                 found = (curName.dword == exp.dword);
                 start += 4;
 
                 // Getting the chunk size
                 littleDeserialize(buf, bufSize, start, chunkSize);
-                debug("Byte %d: Chunk size = %d\n", start, chunkSize->longVal);
+                debug("Byte %llu: Chunk size = %llu\n", start, chunkSize->longVal);
                 start += 8;
 
                 // Skipping this current chunk if it isn't the meta chunk
@@ -43,7 +43,7 @@ uint64_t findChunk(const struct FileBin *delta, uint64_t start,
                         loud("Warning: Encountered unexpected chunk \"%s\". It has been skipped\n",
                                 curName.str);
                         normal(" \\___ Was expecting \"%s\"\n", exp.str);
-                        verbose(" \\___ Byte %d: Skipping %d bytes\n", start, 
+                        verbose(" \\___ Byte %llu: Skipping %llu bytes\n", start, 
                                 chunkSize->longVal);
                         start += chunkSize->longVal;
                 }
@@ -56,7 +56,7 @@ uint64_t findChunk(const struct FileBin *delta, uint64_t start,
         } 
 
         if(start + chunkSize->longVal > bufSize) {
-                error("Error while reading delta: Meta chunk size (%d bytes) extends out of bounds\n",
+                error("Error while reading delta: Meta chunk size (%llu bytes) extends out of bounds\n",
                         chunkSize->longVal);
                 return 0;
         }
@@ -72,7 +72,7 @@ uint64_t readAndVerifyV1(const struct Slurped *args, struct DeltaHeader *header,
         const struct FileBin *delta, uint64_t start)
 {
         if (delta->size < V1_DELTA_HEADER_SIZE) {
-                error("Error while reading delta: Delta file must have an incomplete header (size < %d bytes)\n",
+                error("Error while reading delta: Delta file's header is too small (size < %d bytes)\n",
                         V1_DELTA_HEADER_SIZE);
                 normal(" \\___ A delta generated with the --preserve flag may be incomplete because of an error\n");
                 return 0;
@@ -91,7 +91,7 @@ uint64_t readAndVerifyV1(const struct Slurped *args, struct DeltaHeader *header,
         } 
         
         if (v1->metaSize.longVal < V1_META_SIZE) {
-                error("Error while reading delta: Meta chunk size is not large enough (%d bytes < %d bytes)\n",
+                error("Error while reading delta: Meta chunk size is not large enough (%llu bytes < %d bytes)\n",
                         v1->metaSize.longVal, V1_META_SIZE);
                 return 0;
         }
@@ -119,7 +119,7 @@ uint64_t readAndVerifyV1(const struct Slurped *args, struct DeltaHeader *header,
         }
 
         if (header->dataSize.longVal < 1) {
-                error("Error while reading delta: Data chunk size is not large enough (%d bytes < %d bytes)\n",
+                error("Error while reading delta: Data chunk size is not large enough (%llu bytes < %d bytes)\n",
                         header->dataSize.longVal, 1);
                 return 0;
         }
@@ -176,7 +176,7 @@ uint64_t readAndVerifyHeader(const struct Slurped *args,
 
         // Getting the target size
         littleDeserialize(delta->buf, delta->size, start, &header->targetSize);
-        verbose("Got target length as %d bytes\n", header->targetSize.longVal);
+        verbose("Got target length as %llu bytes\n", header->targetSize.longVal);
         start += 8;
 
         // Handling the other stuff. This also sets the data chunk size
@@ -262,7 +262,7 @@ uint32_t reconstructFromArgs(const struct Slurped *args, uint8_t *outBuf,
                 // Deserializing the command
                 const int read = deserializeCommand(cmdBuf, cmdBufSize, i, &cmd);
                 const int cmdSize = serialSizeOf(&cmd);
-                verbose(" \\___ Deserialized %d-%d; deserialized cmd '%c'\n", 
+                verbose(" \\___ Deserialized %llu-%llu; deserialized cmd '%c'\n", 
                         i, i + read, cmd.type);
 
                 if (read != cmdSize) {
@@ -283,7 +283,7 @@ uint32_t reconstructFromArgs(const struct Slurped *args, uint8_t *outBuf,
                 // FIXME: patchCommand should return a uint64_t, as the bounds of a command are LARGE
                 const int patched = patchCommand(src->buf, src->size, outBuf, 
                         outSize, &cmd);
-                verbose("   \\___ Patched %d bytes for type '%c'\n", patched, 
+                verbose("   \\___ Patched %llu bytes for type '%c'\n", patched, 
                         cmd.type);
                 // FIXME: patchSizeOf should return a uint64_t, as the bounds of a command are LARGE
                 if (patched != patchSizeOf(&cmd)) {
@@ -323,7 +323,7 @@ int reconstructTarget(struct Slurped *args)
         // Parsing the header to verify input files and get the parse parameters
         struct DeltaHeader header;
         const uint64_t dataStart = readAndVerifyHeader(args, &header, delta);
-        debug("readAndVerifyHeader returned %d\n", dataStart);
+        debug("readAndVerifyHeader returned %llu\n", dataStart);
         if (dataStart == 0) {
                 verbose("Cancelled the reconstruction\n");
                 freeBin(delta);
@@ -334,12 +334,12 @@ int reconstructTarget(struct Slurped *args)
         // Allocating our destination for reconstruction
         normal("Patching our commands to an output buffer... (takes a lot of time)\n");
         const uint64_t outSize = header.targetSize.longVal;
-        debug("Allocating %d bytes...\n", outSize);
+        debug("Allocating %llu bytes...\n", outSize);
         uint8_t *outBuf = (uint8_t *) malloc(outSize);
         debug("Allocated.\n");
 
         if (outBuf == NULL) {
-                error("Error while patching: Could not allocate %d byte output buffer\n",
+                error("Error while patching: Could not allocate %llu byte output buffer\n",
                         outSize);
                 freeBin(delta);
                 closeMaybeRemove(outFile, args);

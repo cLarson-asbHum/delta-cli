@@ -59,9 +59,9 @@ int main(int argc, char **argv)
         const uint32_t flags = slurpedPtr->flags;
 
         debug("Slurped Flags: %08x\n", flags);
-        debug("Output Path: %s (length %d)\n", slurpedPtr->outputFileName, slurpedPtr->outputLen);
-        debug("Pos arg 1: %s (length %d)\n", slurpedPtr->posArg1, slurpedPtr->posArg1Len);
-        debug("Pos arg 2: %s (length %d)\n", slurpedPtr->posArg2, slurpedPtr->posArg2Len);
+        debug("Output Path: %s (length %llu)\n", slurpedPtr->outputFileName, slurpedPtr->outputLen);
+        debug("Pos arg 1: %s (length %llu)\n", slurpedPtr->posArg1, slurpedPtr->posArg1Len);
+        debug("Pos arg 2: %s (length %llu)\n", slurpedPtr->posArg2, slurpedPtr->posArg2Len);
 
         // Help and version flags take precedent over everything (including errors)
         if (flags & HELP_FLAG) {

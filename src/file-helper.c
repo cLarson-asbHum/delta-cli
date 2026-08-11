@@ -96,7 +96,7 @@ struct FileBin *readBin(char *filename, int filenameLen)
         }
         uint8_t *srcBuf = malloc(srcSize);
         if (srcBuf == NULL) {
-                error("Error while reading from file: Failed to allocate %d bytes\n", 
+                error("Error while reading from file: Failed to allocate %llu bytes\n", 
                         srcSize);
                 free(srcBuf);
                 // TODO: Failure should be set somewhere
@@ -106,7 +106,7 @@ struct FileBin *readBin(char *filename, int filenameLen)
         normal("Reading from \"%s\"... (this may take awhile)\n", filename);
         const int srcRead = fread((void *) srcBuf, 1, srcSize, src);
         if (srcRead != srcSize) {
-                error("Error while reading from file: Expected to read %d bytes; read %d\n", 
+                error("Error while reading from file: Expected to read %llu bytes; read %llu\n", 
                         srcSize, srcRead);
                 normal(" \\___ Reason: %s\n", strerror(errno));
                 free(srcBuf);

@@ -29,8 +29,8 @@ void verboseCmdLog(const struct Command *command)
 {
         if (command->type == ADD_COMMAND && (getLogFlags() & VERBOSE_FLAG)) {
                 const char c = (char) (command->cmd.add.symbol);
-                const uint8_t qSet = command->cmd.add.tgtIndex.longVal;
-                verbose("   \\___ Command: ADD '%c' at %d \n", c, qSet);
+                const uint64_t qSet = command->cmd.add.tgtIndex.longVal;
+                verbose("   \\___ Command: ADD '%c' at %llu \n", c, qSet);
                 return ;
         }
 
@@ -38,13 +38,13 @@ void verboseCmdLog(const struct Command *command)
                 const uint64_t pSet = command->cmd.move.srcIndex.longVal;
                 const uint64_t qSet = command->cmd.move.tgtIndex.longVal;
                 const uint64_t l    = command->cmd.move.len.longVal;
-                verbose("   \\___ Command: MOVE %d -> %d (length %d) \n", pSet, 
-                        qSet, l);
+                verbose("   \\___ Command: MOVE %llu -> %llu (length ) \n", 
+                        pSet, qSet, l);
                 return ;
         }
 
         // Garbage data
-        verbose("   \\___ Garbage command (type <%d>)\n", command->type);
+        verbose("   \\___ Garbage command (type <%llu>)\n", command->type);
 }
 
 void debugLinked(struct LinkedCommand *head) 
@@ -76,7 +76,7 @@ uint64_t computeCmds(const struct FileBin *s, const struct FileBin *t,
         uint64_t outSize = 0;
 
         while (q < t->size) {
-                normal(" \\___ %d / %d (%.2f%%)\n", q, t->size, 
+                normal(" \\___ %llu / %llu (%.2f%%)\n", q, t->size, 
                         100.0f * (float) q / (float) t->size);
 
                 // TODO: Start from the last p.
@@ -135,11 +135,11 @@ uint64_t computeCmdsFromArgs(const struct Slurped *args, struct LinkedCommand *h
 uint32_t outputHeaderV1(FILE *outFile, const struct DeltaHeader *header)
 {
         const uint64_t outSize = V1_DELTA_HEADER_SIZE;
-        debug("Allocating %d bytes for header\n", outSize);
+        debug("Allocating %llu bytes for header\n", outSize);
         uint8_t *outBuf = malloc(outSize);
 
         if (outBuf == NULL) {
-                error("Error while serializing header: Could not allocate %d bytes\n", 
+                error("Error while serializing header: Could not allocate %llu bytes\n", 
                         outSize);
                 return EXIT_FAILURE;
         }
@@ -230,7 +230,7 @@ uint32_t writeHeader(const struct Slurped *args, FILE *outFile, uint64_t dataSiz
 
         header.targetSize.longVal = fileLength(tgt);
 
-        verbose("Target Size: %d bytes\n", header.targetSize.longVal);
+        verbose("Target Size: %llu bytes\n", header.targetSize.longVal);
         verbose("Closing the aforementioned read-only target file\n");
         if (fclose(tgt) != 0) {
                 error("Error while formatting header: Could not close target file\n");
@@ -262,7 +262,7 @@ uint64_t serializeCmds(uint8_t *outBuf, uint64_t bufSize,
                 const struct Command *cmd = cur->elem;
                 verbose(" \\___ Serializing command with type '%c' and serial size %d\n",
                         cmd->type, serialSizeOf(cmd));  
-                debug(" \\___ Index: %d\n", i);
+                debug(" \\___ Index: %llu\n", i);
                 
                 // Serializing the command
                 const uint32_t expectedSize = serialSizeOf(cmd);
@@ -316,11 +316,11 @@ int computeDelta(const struct Slurped *args)
 
         // Allocating our destination for serialization
         normal("Serializing the commands... (this may take a while)\n");
-        debug("Allocating %d bytes...\n", outSize);
+        debug("Allocating %llu bytes...\n", outSize);
         uint8_t *outBuf = (uint8_t *) malloc(outSize);
         debug("Allocated.\n");
         if (outBuf == NULL) {
-                error("Error while serializing: Could not allocate %d byte output buffer\n",
+                error("Error while serializing: Could not allocate %llu byte output buffer\n",
                         outSize);
                 freeLinked(head.next);
                 closeMaybeRemove(outFile, args);
