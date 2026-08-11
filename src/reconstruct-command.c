@@ -7,6 +7,63 @@
 #include "hash.h"
 #include "delta.h"
 
+union SerialDword {
+        char str[5]; // Extra char for a null terminator
+        uint32_t dword;
+};
+
+// Returns the index of the specified chunk
+uint64_t findChunk(const struct FileBin *delta, uint64_t start, 
+        const char chunkName[4], union SerialLong *chunkSize) 
+{
+        union SerialDword exp;
+        memcpy(exp.str, chunkName, 4);
+        exp.str[4] = '\0';
+
+        const uint8_t *buf = delta->buf;
+        const uint64_t bufSize = delta->size;
+        uint8_t found = 0;
+
+        do {
+                // Comparing the chunk name against the specified
+                union SerialDword curName = { .str = {0,0,0,0,0} };
+                memcpy(curName.str, &buf[start], 4);
+                verbose("Byte %d: Checking whether '%s' is '%s'\n", start, 
+                        curName.str, exp.str);
+                found = (curName.dword == exp.dword);
+                start += 4;
+
+                // Getting the chunk size
+                littleDeserialize(buf, bufSize, start, chunkSize);
+                debug("Byte %d: Chunk size = %d\n", start, chunkSize->longVal);
+                start += 8;
+
+                // Skipping this current chunk if it isn't the meta chunk
+                if(!found) {
+                        loud("Warning: Encountered unexpected chunk \"%s\". It has been skipped\n",
+                                curName.str);
+                        normal(" \\___ Was expecting \"%s\"\n", exp.str);
+                        verbose(" \\___ Byte %d: Skipping %d bytes\n", start, 
+                                chunkSize->longVal);
+                        start += chunkSize->longVal;
+                }
+        } while (!found && start + 11 < bufSize);
+
+        if (!found) {
+                error("Error while reading delta: Could not find chunk '%s'.\n", 
+                        exp.str);
+                return 0;
+        } 
+
+        if(start + chunkSize->longVal > bufSize) {
+                error("Error while reading delta: Meta chunk size (%d bytes) extends out of bounds\n",
+                        chunkSize->longVal);
+                return 0;
+        }
+
+        return start;
+}
+
 // Returns the index at which commands start, i.e. the index after 
 // DeltaHeader.dataSize. If an error occurs, this returns 0; this shouldn't be 
 // misinterpreted as an actual index, as a delta file MUST have at least 
@@ -22,63 +79,16 @@ uint64_t readAndVerifyV1(const struct Slurped *args, struct DeltaHeader *header,
         }
 
         struct Version1Header *v1 = &header->header.v1;
-        union SerialDword {
-                char chars[4];
-                uint32_t dword;
-        };
 
         // Searching for the meta chunk.
         // If there is a chunk we don't recognize, we skip it and check the next
-        const union SerialDword met = { .chars = META_CHUNK_NAME };
-        uint8_t isMeta = 0;
-        #define SEARCH_MAX ((uint64_t) 0x0000000f00000000ull)
+        const char met[4] = META_CHUNK_NAME;
+        start = findChunk(delta, start, met, &v1->metaSize);
 
-        do {
-                // Comparing the chunk name against the meta chunk name ("meta")
-                union SerialDword curName;
-                verbose("Byte %d: Checking whether '", start);
-                for (int i = 0; i < 4; i++) {
-                        curName.chars[i] = delta->buf[start + i];
-                        verbose("%c", curName.chars[i]);
-                }
-                verbose("' is 'meta'\n");
-                isMeta = (curName.dword == met.dword);
-                start += 4;
-
-                // Getting the chunk size
-                // We store in meta size as it is most convenient
-                if (littleDeserialize(delta->buf, delta->size, start,
-                        &v1->metaSize) != 8) 
-                {
-                        // This should NEVER happen, but we check just in case
-                        error("Error while reading delta: Attempted to read a chunk's size even though it was out of bounds\n");
-                        return 0;
-                }
-                debug("Byte %d: Parsed the chunk size as %d\n", start, 
-                        v1->metaSize.longVal);
-                start += 8;
-
-                // Skipping this current chunk if it isn't the meta chunk
-                if(!isMeta) {
-                        const char *c = curName.chars;
-                        loud("Warning: Encountered unexpected chunk \"%c%c%c%c\". It has been skipped\n",
-                                c[0], c[1], c[2], c[3]);
-                        verbose("Byte %d: Not a meta chunk; skipping %d bytes\n",
-                                start, v1->metaSize.longVal);
-                        start += v1->metaSize.longVal;
-                }
-        } while (!isMeta && start + 11 < delta->size && start < SEARCH_MAX);
-
-        if (!isMeta) {
-                error("Error while reading delta: Could not find v1 meta chunk.\n");
+        if (start == 0) {
+                // Error would've already been printed to stderr.
                 return 0;
         } 
-
-        if(start + v1->metaSize.longVal > delta->size) {
-                error("Error while reading delta: Meta chunk size (%d bytes) extends out of bounds\n",
-                        v1->metaSize.longVal);
-                return 0;
-        }
         
         if (v1->metaSize.longVal < V1_META_SIZE) {
                 error("Error while reading delta: Meta chunk size is not large enough (%d bytes < %d bytes)\n",
@@ -93,82 +103,21 @@ uint64_t readAndVerifyV1(const struct Slurped *args, struct DeltaHeader *header,
         }
         start += 64;
 
-        // Verifying the source hash
-        uint8_t ignoreHash = 1 || (args->flags & IGNORE_HASH_FLAG);
-        
-        // // TODO: Check if the hashes are NULL_SHA
-        // if (v1->sourceHash.bytes[]) {
-        //         loud("Warning: No source hash was provided");
-        //         verbose(" \\___ More accurately")
-        //         ignoreHash = 1;
-        // }
-
-        // FIXME: Because we can't currently hash, we just assume --ignore-hash
-        if (ignoreHash) {
-                loud("Warning: Ignoring hash verification for source files\n");
-                normal(" \\___ The reconstructed target could possibly be silently corrupted as a result\n");
-                // TODO: Warnings-as-errors flag
-        }
-
+        // Skipping cmdLensEqual and the padding bytes
         // We ignore the cmdLensEqual member, as using it would increase the 
         // complexity of the program (even though it would increase speed)
-        start++;
-
-        // Skipping the padding bytes
-        start += 3;
+        start += 4;
 
         // Searching for the data chunk.
         // If there is a chunk we don't recognize, we skip it and check the next
-        const union SerialDword dat = { .chars = DATA_CHUNK_NAME };
-        uint8_t isData = 0;
-
-        do {
-                // Comparing the chunk name against the data chunk name ("data")
-                union SerialDword curName;
-                verbose("Byte %d: Checking whether '", start);
-                for (int i = 0; i < 4; i++) {
-                        curName.chars[i] = delta->buf[start + i];
-                        verbose("%c", curName.chars[i]);
-                }
-                verbose("' is 'data'\n");
-                isData = (curName.dword == dat.dword);
-                start += 4;
-
-                // Getting the chunk size
-                // We store in data size as it is most convenient
-                if (littleDeserialize(delta->buf, delta->size, start,
-                        &header->dataSize) != 8) 
-                {
-                        // This should NEVER happen, but we check just in case
-                        error("Error while reading delta: Attempted to read a chunk's size even though it was out of bounds\n");
-                        return 0;
-                }
-                debug("Byte %d: Parsed the chunk size as %d\n", start,
-                        header->dataSize.longVal);
-                start += 8;
-
-                // Skipping this current chunk if it isn't the data chunk
-                if(!isData) {
-                        const char* c = curName.chars;
-                        loud("Warning: Encountered unexpected chunk \"%c%c%c%c\". It has been skipped\n",
-                                c[0], c[1], c[2], c[3]);
-                        verbose("Byte %d: Not a data chunk; skipping %d bytes\n",
-                                start, header->dataSize.longVal);
-                        start += header->dataSize.longVal;
-                }
-        } while (!isData && start + 11 < delta->size && start < SEARCH_MAX);
-
-        if (!isData) {
-                error("Error while reading delta: Could not find v1 data chunk.\n");
-                return 0;
-        } 
-
-        if(start + header->dataSize.longVal > delta->size) {
-                error("Error while reading delta: Data chunk size (%d bytes) extends out of bounds\n",
-                        header->dataSize.longVal);
+        const char dat[4] = DATA_CHUNK_NAME;
+        start = findChunk(delta, start, dat, &header->dataSize);
+        
+        if(start == 0) {
+                // Error message already printed.
                 return 0;
         }
-        
+
         if (header->dataSize.longVal < 1) {
                 error("Error while reading delta: Data chunk size is not large enough (%d bytes < %d bytes)\n",
                         header->dataSize.longVal, 1);
@@ -176,6 +125,14 @@ uint64_t readAndVerifyV1(const struct Slurped *args, struct DeltaHeader *header,
         }
 
         return start;
+}
+
+// Determines whether the chunk names are equal
+uint8_t chunkNamesEq(const char name1[4], const char name2[4]) 
+{
+        debug("Comparing %d to %d\n", *((uint32_t *) name1), 
+                *((uint32_t *) name2));
+        return *((uint32_t *) name1) == *((uint32_t *) name2);
 }
 
 // Returns the index at which commands start, i.e. the index after 
@@ -195,33 +152,27 @@ uint64_t readAndVerifyHeader(const struct Slurped *args,
 
         uint64_t start = 0;
 
-        // Checking the magic numbers
+        // Checking the magic number (the first 4 bytes of the file)
         const char mag[] = MAGIC_NUMBER;
-        for (int i = 0; i < 4; i++) {
-                verbose("Byte at %d: 0x%02x (expecting 0x%02x)\n", i, 
-                        delta->buf[start], mag[i]);
-                if (delta->buf[start] != mag[i]) {
-                        error("Error while reading delta: File did not start with 'DLTA'\n");
-                        return 0;
-                }
-                header->magicNumber[i] = mag[i];
-                start++;
+        if (!chunkNamesEq(mag, delta->buf)) {
+                error("Error while reading delta: File did not start with 'DLTA'\n");
+                return 0;
         }
+        memcpy(&header->magicNumber, mag, 4);
+        start += 4;
 
-        // Getting the version
-        const char ver[] = VERSION_CHUNK_NAME;
-        for (int i = 0; i < 3; i++) {
-                verbose("Byte at %d: 0x%02x (expecting 0x%02x)\n", i, 
-                        delta->buf[start], ver[i]);
-                if (delta->buf[start] != ver[i]) {
-                        error("Error while reading delta: Version was not labelled with 'vrs' or was not a version\n");
-                        return 0;
-                }
-                header->versPseudoChunk[i] = ver[i];
-                start++;
+        // Getting the version if it starts with 'vrs' in the delta file
+        union SerialDword ver = { .str = VERSION_CHUNK_NAME };
+        union SerialDword bufVer = { .dword = 0 };
+        ver.str[3] = 0;
+        memcpy(bufVer.str, &delta->buf[start], 3);
+        if (ver.dword != bufVer.dword) {
+                error("Error while reading delta: Version was not labelled with 'vrs' or was not a version\n");
+                return 0;
         }
-        header->versionId = delta->buf[start];
-        start++;
+        memcpy(header->versPseudoChunk, ver.str, 3);
+        header->versionId = delta->buf[start + 3];
+        start += 4;
 
         // Getting the target size
         littleDeserialize(delta->buf, delta->size, start, &header->targetSize);
@@ -300,6 +251,8 @@ uint32_t reconstructFromArgs(const struct Slurped *args, uint8_t *outBuf,
                 // Message is printed in read bin; not important to even verbose
                 return EXIT_FAILURE;
         }
+
+        // TODO: Check the source's hash
 
         // Deserializing successive commands and applying them
         uint64_t i = 0;
