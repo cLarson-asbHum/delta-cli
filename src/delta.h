@@ -36,10 +36,19 @@ struct AddCommand
         union SerialLong tgtIndex; // Where the symbol is in the target string
 };
 
+// Operates exactly like AddCommand, except that the symbol is 64 bits.
+// In comparison to AddCommand, this has a patch size of 8 rather than a patch 
+// size of 1. The cur index is still 64 bits and points the same as AddCommand.
+struct Add64Command {
+        uint64_t symbol64;
+        union SerialLong tgtIndex; // Where the symbol is in the target
+};
+
 enum CommandType
 {
-        MOVE_COMMAND = 'M',
-        ADD_COMMAND  = 'A'
+        MOVE_COMMAND   = 'M', // All versions.
+        ADD_COMMAND    = 'A', // All versions.
+        ADD_64_COMMAND = 'X', // Version 2+
 };
 
 // A command of runtime-determined type.
@@ -50,6 +59,7 @@ struct Command
         {
                 struct MoveCommand move;
                 struct AddCommand add;
+                struct Add64Command add64;
         } cmd;
 };
 
@@ -64,6 +74,19 @@ struct Command
 // tgtMaxCount - maximum length of the prefix
 struct Command *nextLargestMove(const uint8_t *source, uint64_t srcStart, 
         uint64_t srcLen, const uint8_t *target, uint64_t tgtMaxCount);
+
+
+// Computes the largest block move, as described by procedure L in Tichy (page 8),
+// using 64 bit words as the symbols (rather than bytes). If either tgtMaxCount is 
+// 0, or srcStart is greater than or equal to srcLen, this returns NULL.
+//
+// source   - pointer to the first word of the source string
+// srcStart - Index to start at in the source string, in number of words (not bytes)
+// srcLen   - length of the source string, in number of words (not bytes)
+// target   - pointer to the first word of the prefix (start of L in Tichy)
+// tgtMaxCount - maximum length of the prefix, in number of words
+struct Command *nextLargest64Move(const uint64_t *source, uint64_t srcStart, 
+        uint64_t srcLen, const uint64_t *target, uint64_t tgtMaxCount);
 
 #define GARBAGE_PATCH_SIZE UINT64_MAX
 
@@ -108,15 +131,9 @@ uint64_t lastPatchedIndex(const struct Command *command);
 #define DATA_CHUNK_NAME { 'd', 'a', 't', 'a' } 
 
 #define V1_META_PADDING (3)
-// Value for the Version1Header metaSize member. 
 #define V1_META_SIZE (32 + 32 + 1 + V1_META_PADDING)
-
-// Size of the header for version 1 files.
 #define V1_DELTA_HEADER_SIZE (4 + 3 + 1 + 8 + 4 + 8 + V1_META_SIZE + 4 + 8)
 
-// All of the bytes that come before the actual data. This is a RIFF-like
-// file. All multi-byte numbers (including those in the data) are 
-// little-endian.
 struct Version1Header {
         // Meta data
         uint8_t metaChunk[4];    // MUST always be META_CHUNK_NAME
@@ -129,6 +146,26 @@ struct Version1Header {
         uint8_t paddingNoOneShouldEverReadOrWriteTo[V1_META_PADDING];
 };
 
+
+#define V2_META_PADDING (3)
+#define V2_META_SIZE (32 + 32 + 1 + V2_META_PADDING)
+#define V2_DELTA_HEADER_SIZE (4 + 3 + 1 + 8 + 4 + 8 + V2_META_SIZE + 4 + 8)
+
+struct Version2Header {
+        // Meta data
+        uint8_t metaChunk[4];    // MUST always be META_CHUNK_NAME
+        union SerialLong metaSize;
+        union Sha256 sourceHash; // for the file used to reconstruct
+        union Sha256 targetHash; // for the output of reconstruction
+        uint8_t isV1Compatible;  // True iff only A and M commands are present    
+        
+        // Padding which aligns the meta chunk size to 16 bytes:
+        uint8_t paddingNoOneShouldEverReadOrWriteTo[V2_META_PADDING];
+};
+
+// All of the bytes that come before the actual data. This is a RIFF-like
+// file. All multi-byte numbers (including those in the data) are 
+// little-endian.
 struct DeltaHeader {
         // Top-level info
         uint8_t magicNumber[4];     // MUST always be MAGIC_NUMBER
@@ -141,6 +178,7 @@ struct DeltaHeader {
         // Version-specific chunks
         union {
                 struct Version1Header v1;
+                struct Version2Header v2;
         } header;
 
         /* ... other chunks (if any) ... */
@@ -150,6 +188,13 @@ struct DeltaHeader {
         union SerialLong dataSize; // in bytes
         /* commands... */
 };
+
+#define GARBAGE_VERSION UINT8_MAX
+
+// Gets the minimum version which supports the given command type. ADD_COMMAND 
+// and MOVE_COMMAND are always 1; ADD_64_COMMAND is 2. Garbage data returns 
+// GARBAGE_VERSION
+uint8_t minVersion(enum CommandType type);
 
 // 0 - Little endian; 1 - big endian
 uint8_t determineEndian();
@@ -172,6 +217,8 @@ uint8_t littleDeserialize(const uint8_t *buf, uint64_t bufSize, uint64_t start,
 // ||Type byte|| + ||srcIndex|| + ||tgtIndex|| + ||len||
 #define MOVE_SERIAL_SIZE (uint8_t) (1 + 8 + 8 + 8)
 
+// ||Type byte|| + ||symbol|| + ||tgtIndex||, 
+#define ADD_64_SERIAL_SIZE (uint8_t) (1 + 8 + 8)
 
 // Determines how many bytes are necessary to serialize the given command. If 
 // the type is garbage data, then this returns GARBAGE_SERIAL_SIZE.
