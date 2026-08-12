@@ -363,7 +363,7 @@ uint8_t serializeCommand(uint8_t *buf, uint64_t bufSize, uint64_t i,
                 return serializeMove(buf, bufSize, i, &(command->cmd.move));
                 
         case ADD_64_COMMAND:
-                return serializeAdd(buf, bufSize, i, &(command->cmd.add64));
+                return serializeAdd64(buf, bufSize, i, &(command->cmd.add64));
 
         default:
                 return 0;

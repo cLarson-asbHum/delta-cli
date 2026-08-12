@@ -64,6 +64,18 @@ Flags:
 
     --error         Same as --quiet (see below)
 
+    --file-version=<1|2>  
+                    For computing a delta, sets what delta file format is used,
+                    along with what commands are included. For reconstruction, 
+                    forces the delta file to be read as the specified version.
+                    Defaults to the current version (2) if this flag is not 
+                    present.
+
+                    This command *can* greatly increase computation time and file 
+                    size, so it is strongly recommended to use it only when making
+                    backwards-compatible files or reading files with incorrect 
+                    versions.
+
     --force-destination-delete
                     Allows the output of delta or reconstruct to delete a
                     conflicting file which has the same name as the output.

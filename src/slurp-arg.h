@@ -18,12 +18,14 @@
 #define GARBAGE_EASTER_EGG_FLAG (1u << (10))
 #define PROMPT_FLAG             (1u << (11))
 #define PRESERVE_FLAG           (1u << (12))
+#define FILE_VERSION_FLAG       (1u << (13))
 #define ERROR_FLAG              (1u << (30))
 
 struct Slurped {
         uint32_t flags;
         uint16_t outputLen;
         char *outputFileName;
+        int16_t version;
         uint16_t posArg1Len;
         char *posArg1;
         uint16_t posArg2Len;
@@ -38,6 +40,8 @@ enum SlurpErr {
         ZERO_LENGTH_OUTPUT_PATH = -3,
         MISSING_POS_ARG         = -4,
         TOO_MANY_POS_ARGS       = -5,
+        MALFORMED_FILE_VERSION  = -6,
+        UNKNOWN_FILE_VERSION    = -7,
         
         FORCE_BREAK = -100,  // For internal use when slurping only
         CONTINUE    = -101,  // For internal use when slurping only

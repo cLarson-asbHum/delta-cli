@@ -126,7 +126,7 @@ uint64_t lastPatchedIndex(const struct Command *command);
 
 #define MAGIC_NUMBER { 'D', 'L', 'T', 'A'  }
 #define VERSION_CHUNK_NAME { 'v', 'r', 's' }
-#define CURRENT_VERSION 1
+#define CURRENT_VERSION 2
 #define META_CHUNK_NAME { 'm', 'e', 't', 'a' }
 #define DATA_CHUNK_NAME { 'd', 'a', 't', 'a' } 
 
@@ -156,7 +156,7 @@ struct Version2Header {
         union SerialLong metaSize;
         union Sha256 sourceHash; // for the file used to reconstruct
         union Sha256 targetHash; // for the output of reconstruction
-        uint8_t isV1Compatible;  // True iff only A and M commands are present    
+        uint8_t isV1Compatible;  // Non-zero iff only A and M commands are present    
         
         // Padding which aligns the meta chunk size to 16 bytes:
         uint8_t paddingNoOneShouldEverReadOrWriteTo[V2_META_PADDING];

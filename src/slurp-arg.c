@@ -1,7 +1,9 @@
 #include <stdlib.h>
 #include <string.h>
+#include <ctype.h>
 #include "log-level.h"
 #include "slurp-arg.h"
+#include "delta.h"
 
 // a million, or 'round-about there
 #define LOOP_MAX 1000000
@@ -210,7 +212,7 @@ enum SlurpErr checkOpt(struct Slurped *out, int32_t argc, char **argv)
                 return SLURP_SUCCESS;
         }
 
-        if ((streq(arg, "--quiet", 8) || streq(arg, "--error", 8))) {
+        if (streq(arg, "--quiet", 8) || streq(arg, "--error", 8)) {
                 // Override silent and verbose, which conflict with quiet
                 out->flags = (out->flags & ~(VERBOSE_FLAG | SILENT_FLAG));
                 out->flags = (out->flags | QUIET_FLAG);
@@ -224,7 +226,7 @@ enum SlurpErr checkOpt(struct Slurped *out, int32_t argc, char **argv)
                 return SLURP_SUCCESS;
         }
         
-        if ((streq(arg, "-p", 3) || streq(arg, "--prompt", 9))) {
+        if (streq(arg, "-p", 3) || streq(arg, "--prompt", 9)) {
                 // Override the force delete flag, which conflicts with prompt
                 out->flags = (out->flags & ~(DESTINATION_DELETE_FLAG));
                 out->flags = (out->flags | PROMPT_FLAG);
@@ -244,7 +246,7 @@ enum SlurpErr checkOpt(struct Slurped *out, int32_t argc, char **argv)
                 return SLURP_SUCCESS;
         }
 
-        if ((streq(arg, "-o", 3) || streq(arg, "--output", 9))) {
+        if (streq(arg, "-o", 3) || streq(arg, "--output", 9)) {
                 if (i >= argc - 1) {
                         out->flags = (out->flags | ERROR_FLAG);
                         return ZERO_LENGTH_OUTPUT_PATH;
@@ -270,6 +272,26 @@ enum SlurpErr checkOpt(struct Slurped *out, int32_t argc, char **argv)
 
         if (streq(arg, "--preserve", 11)) {
                 out->flags = (out->flags | PRESERVE_FLAG);
+                return SLURP_SUCCESS;
+        }
+        
+        // TODO: support for two-digit versions
+        if (streq(arg, "--file-version=", 15)) {
+                const int32_t len = strnlen(arg, 17);
+                debug(" \\___ File version-like length is %d\n", len);
+                if (len != 16 || !isdigit(arg[15])) {
+                        out->flags = (out->flags | ERROR_FLAG);
+                        return MALFORMED_FILE_VERSION;
+                }
+                out->flags = (out->flags | FILE_VERSION_FLAG);
+
+                // NOTE: Assumes the digit is encoded with ASCII/UTF-8
+                out->version = ((int16_t) arg[15]) - (int16_t) '0';
+                debug(" \\___ Parsed version as %d\n", out->version);
+                if (out->version < 1 || out->version > CURRENT_VERSION) {
+                        out->flags = (out->flags | ERROR_FLAG);
+                        return UNKNOWN_FILE_VERSION;
+                }
                 return SLURP_SUCCESS;
         }
 
@@ -364,7 +386,7 @@ enum SlurpErr slurpArgs(struct Slurped *out, int32_t argc, char **argv)
 enum SlurpErr displayErr(uint32_t flags, char **argv, enum SlurpErr err, 
         uint32_t i) 
 {
-        const uint8_t hasFlag = (flags & ERROR_FLAG);
+        const uint32_t hasFlag = (flags & ERROR_FLAG);
 
         if (hasFlag && err == SLURP_SUCCESS) {
                 error("Garbage program state: success, but error flag was set.\n");
@@ -413,6 +435,14 @@ enum SlurpErr displayErr(uint32_t flags, char **argv, enum SlurpErr err,
                 verbose("   \\___ e.g. \"--option path/file.ex\" rather than just \"path/file.ex\"\n");
                 normal(" \\___ Verify that all options have '-' or '--' before them\n");
                 verbose("   \\__ e.g. \"--prompt\" or \"-p\", rather than just \"prompt\"\n");
+                break;
+
+        case MALFORMED_FILE_VERSION:
+                error("File version must be only a single digit\n");
+                break;
+                
+        case UNKNOWN_FILE_VERSION:
+                error("File version must be between 1 and %d\n", CURRENT_VERSION);
                 break;
 
         case FORCE_BREAK:
