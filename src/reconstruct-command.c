@@ -285,8 +285,9 @@ uint64_t reconstructFromArgs(const struct Slurped *args, uint8_t *outBuf,
                 const uint8_t read = deserializeCommand(cmdBuf, cmdBufSize, i, 
                         &cmd);
                 const uint8_t cmdSize = serialSizeOf(&cmd);
-                verbose(" \\___ Deserialized %llu-%llu; deserialized cmd '%c'\n", 
-                        i, i + read, cmd.type);
+                normal(" \\___ Deserialized bytes %llu-%llu (%.2f%%)\n", i, 
+                        i + read, 100.0 * (i + read) / cmdBufSize);
+                verbose("   \\___ Command type symbol is '%c'\n", cmd.type);
 
                 if (read != cmdSize) {
                         diagnoseDeserializeError(cmd.type, cmdSize, i, read, 
