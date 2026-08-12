@@ -22,11 +22,11 @@
 
 struct Slurped {
         uint32_t flags;
-        uint32_t outputLen;
+        uint16_t outputLen;
         char *outputFileName;
-        uint32_t posArg1Len;
+        uint16_t posArg1Len;
         char *posArg1;
-        uint32_t posArg2Len;
+        uint16_t posArg2Len;
         char *posArg2;
 };
 
@@ -51,10 +51,11 @@ uint8_t minPosArgs(uint32_t flags);
 
 uint8_t maxPosArgs(uint32_t flags);
 
-enum SlurpErr slurpArgs(struct Slurped *out, int argc, char **argv);
+enum SlurpErr slurpArgs(struct Slurped *out, int32_t argc, char **argv);
 
 // Displays a message for the slurpErr variable. Returns SLURP_SUCCESS if there 
 // was no error to begin with
-enum SlurpErr displayErr(uint32_t flags, char **argv, enum SlurpErr err, int i);
+enum SlurpErr displayErr(uint32_t flags, char **argv, enum SlurpErr err, 
+        uint32_t i);
 
 #endif

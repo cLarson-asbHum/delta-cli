@@ -10,7 +10,7 @@
 
 #define LOOP_MAX 1000000
 
-int putFile(char *fileName)
+int32_t putFile(char *fileName)
 {
         FILE *file = fopen(fileName, "r");
 
@@ -20,8 +20,8 @@ int putFile(char *fileName)
                 return EXIT_FAILURE;
         }
 
-        int retCode = 0;
-        for (int i = 0; (retCode != EOF) && (i < LOOP_MAX); i++) {
+        uint32_t retCode = 0;
+        for (uint32_t i = 0; (retCode != EOF) && (i < LOOP_MAX); i++) {
                 retCode = fgetc(file);
                 if (retCode != EOF) {
                         retCode = putchar(retCode);
@@ -39,10 +39,10 @@ int putFile(char *fileName)
         return EXIT_SUCCESS;
 }
 
-FILE *attemptRFileOpen(char *filename, int maxCount) 
+FILE *attemptRFileOpen(char *filename, uint16_t maxCount) 
 {
         // Getting the file name 
-        char *subName = malloc(sizeof(char) * (maxCount + 1));
+        char *subName = malloc(sizeof(char) * (maxCount + (uint16_t) 1u));
         strncpy(subName, filename, maxCount);
         subName[maxCount] = '\0';
 
@@ -79,7 +79,7 @@ uint64_t fileLength(FILE *file)
         return _filelength(_fileno(file));
 }
 
-struct FileBin *readBin(char *filename, int filenameLen)
+struct FileBin *readBin(char *filename, uint16_t filenameLen)
 {
         // NOTE: This uses the Win _fileno() function to create a buffer
         // Opening the src file and reading from
@@ -104,7 +104,7 @@ struct FileBin *readBin(char *filename, int filenameLen)
         }
 
         normal("Reading from \"%s\"... (this may take awhile)\n", filename);
-        const int srcRead = fread((void *) srcBuf, 1, srcSize, src);
+        const uint64_t srcRead = fread((void *) srcBuf, 1, srcSize, src);
         if (srcRead != srcSize) {
                 error("Error while reading from file: Expected to read %llu bytes; read %llu\n", 
                         srcSize, srcRead);
@@ -148,10 +148,11 @@ void freeBin(struct FileBin *bin) {
 // Returns 1 if the existing file should be overridden; 0 otherwise. This 
 // prints messages to stdout (and/or stderr), and gets input from stdin
 // if the prompt flag is set
-int overrideExisting(const char* subName, uint32_t flags) 
+uint8_t overrideExisting(const char* subName, uint32_t flags) 
 {
-        const int force = flags & DESTINATION_DELETE_FLAG;
-        const int prompt = (flags & PROMPT_FLAG) && !(flags & SILENT_FLAG);
+        const uint32_t force = flags & DESTINATION_DELETE_FLAG;
+        const uint32_t prompt = (flags & PROMPT_FLAG) 
+                && !(flags & SILENT_FLAG);
         
         char userOpinion = 'n';
         if (prompt) {
@@ -160,7 +161,7 @@ int overrideExisting(const char* subName, uint32_t flags)
                 loud("Would you like to override all content in \"%s\"? \n",
                         subName);
                 loud("y/n (default is 'n') > ");
-                int resp = getchar();
+                int32_t resp = getchar();
                 debug("Response was 0x%08x \n", resp);
                 if (resp == EOF || ferror(stdin)) {
                         loud("Warning: user input had an error (defaulting to 'n')\n");
@@ -196,20 +197,20 @@ int overrideExisting(const char* subName, uint32_t flags)
 
         if ((!prompt && force) || (prompt && userOpinion == 'y')) {
                 // We were only ever told to override the file, so do.
-                return 1;
+                return 1u;
         }
 
         // Should be unreachable, but just in case, assume 'n'
-        return 0;
+        return 0u;
 }
 
 // Attempts to open or create a file for writing, displaying a message if the 
 // file cannot be opened. The flags argument specifies whether to override
 // an existing file, to prompt beforehand, or to only ever create new ones.
-FILE *attemptWFileOpen(char *filename, int maxCount, uint32_t flags) 
+FILE *attemptWFileOpen(char *filename, uint16_t maxCount, uint32_t flags) 
 {
         // Getting the file name 
-        char *subName = malloc(sizeof(char) * (maxCount + 1));
+        char *subName = malloc(sizeof(char) * (maxCount + 1uLL));
         strncpy(subName, filename, maxCount);
         subName[maxCount] = '\0';
 
@@ -224,8 +225,7 @@ FILE *attemptWFileOpen(char *filename, int maxCount, uint32_t flags)
         }
 
         // The file DID exist; use the flags to figure out what to do
-        const int closeRet = fclose(file);
-        if (closeRet != 0) {
+        if (fclose(file) != 0) {
                 error("Error while creating file: Could not close \"%s\"\n", 
                         subName);
                 free(subName);
@@ -250,8 +250,7 @@ FILE *attemptWFileOpen(char *filename, int maxCount, uint32_t flags)
 // to the specified file.
 void closeMaybeRemove(FILE *toClose, const struct Slurped *args)
 {
-        const int closeStatus = fclose(toClose);
-        if(closeStatus != 0)  {
+        if (fclose(toClose) != 0)  {
                 loud("Warning: file could not be closed on error\n");
                 return;
         }
@@ -261,9 +260,9 @@ void closeMaybeRemove(FILE *toClose, const struct Slurped *args)
         }
 
         // Getting the file name 
-        const uint32_t len = args->outputLen;
+        const uint16_t len = args->outputLen;
         const char *name = args->outputFileName;
-        char *subName = malloc(sizeof(char) * (len + 1));
+        char *subName = malloc(sizeof(char) * (len + 1u));
         strncpy(subName, name, len);
         subName[len] = '\0';
 

@@ -12,11 +12,11 @@ struct Command *nextLargestMove(const uint8_t *source,
         }
 
         // Finding the maximal l and its corresponding p
-        int p = srcStart; // Index in source
-        int l = 0;         // Length of the move (0 if addition)
+        uint64_t p = srcStart; // Index in source
+        uint64_t l = 0;        // Length of the move (0 if addition)
 
-        const int pStart = srcStart;
-        int pCur = srcStart;
+        const uint64_t pStart = srcStart;
+        uint64_t pCur = srcStart;
 
         // Checking over every character in source, starting at pStart, 
         // wrapping around if we hit the end of source, and ending when 
@@ -24,8 +24,8 @@ struct Command *nextLargestMove(const uint8_t *source,
         while ((pCur + 1) % srcLen != pStart && tgtMaxCount > l) {
                 // Determine length of match between source[pCur....] 
                 // and target[q,...]
-                int lCur = 0;
-                int inBounds = (pCur + lCur < srcLen) && (lCur < tgtMaxCount);
+                uint64_t lCur = 0;
+                uint64_t inBounds = (pCur + lCur < srcLen) && (lCur < tgtMaxCount);
 
                 // TODO: Request more characters
                 while (inBounds && source[pCur + lCur] == target[lCur]) {
@@ -65,23 +65,23 @@ struct Command *nextLargestMove(const uint8_t *source,
         return result;
 }
 
-int patchSizeOf(const struct Command *command) {
-        int commandType = command->type; // Might be garbage
+uint64_t patchSizeOf(const struct Command *command) {
+        uint8_t commandType = command->type; // Might be garbage
         switch (commandType) {
         case ADD_COMMAND:
-                return 1;
+                return 1uLL;
 
         case MOVE_COMMAND:
                 return command->cmd.move.len.longVal;
         
         default:
                 // We were provided garbage data
-                return -1;
+                return GARBAGE_PATCH_SIZE;
         }
 }
 
-int serialSizeOf(const struct Command *command) {
-        int commandType = command->type; // Might be garbage
+uint8_t serialSizeOf(const struct Command *command) {
+        uint8_t commandType = command->type; // Might be garbage
         switch (commandType) {
         case ADD_COMMAND:
                 return ADD_SERIAL_SIZE;
@@ -91,11 +91,11 @@ int serialSizeOf(const struct Command *command) {
         
         default:
                 // We were provided garbage data
-                return -1;
+                return GARBAGE_SERIAL_SIZE;
         }
 }
 
-int patchMove(const uint8_t *source, uint64_t srcLen, uint8_t *out, 
+uint64_t patchMove(const uint8_t *source, uint64_t srcLen, uint8_t *out, 
               uint64_t outLen, const struct MoveCommand *move) 
 {
         const uint64_t srcI = move->srcIndex.longVal;
@@ -111,17 +111,17 @@ int patchMove(const uint8_t *source, uint64_t srcLen, uint8_t *out,
         return i;
 }
 
-int patchAdd(uint8_t *out, uint64_t outLen, const struct AddCommand *add) 
+uint64_t patchAdd(uint8_t *out, uint64_t outLen, const struct AddCommand *add) 
 {
         if(add->tgtIndex.longVal >= outLen) {
                 return 0;
         }
 
         out[add->tgtIndex.longVal] = add->symbol;
-        return 1;
+        return 1uLL;
 }
 
-int patchCommand(const uint8_t *source, uint64_t srcLen, uint8_t *out, 
+uint64_t patchCommand(const uint8_t *source, uint64_t srcLen, uint8_t *out, 
         uint64_t outLen, const struct Command *command) 
 {
         switch (command->type) {
@@ -155,7 +155,7 @@ uint8_t determineEndian() {
 
 // Serializes a little-endian formatted long from a buffer into a SerialLong
 // respecting the system's endianness.
-int littleSerialize(uint8_t *buf, uint64_t bufSize, uint64_t start, 
+uint8_t littleSerialize(uint8_t *buf, uint64_t bufSize, uint64_t start, 
         const union SerialLong *num) 
 {
         if(start + 8 > bufSize) {
@@ -164,12 +164,12 @@ int littleSerialize(uint8_t *buf, uint64_t bufSize, uint64_t start,
 
         if(determineEndian() == 0) {
                 // Little endian
-                for(int i = 0; i < 8; i++) {
+                for(uint32_t i = 0; i < 8; i++) {
                         buf[i + start] = num->bytes[i];
                 }
         } else {
                 // Big endian
-                for(int i = 0; i < 8; i++) {
+                for(uint32_t i = 0; i < 8; i++) {
                         buf[i + start] = num->bytes[7 - i];
                 }
         }
@@ -177,7 +177,7 @@ int littleSerialize(uint8_t *buf, uint64_t bufSize, uint64_t start,
         return 8;
 }
 
-int serializeAdd(uint8_t *buf, uint64_t bufSize, uint64_t start, 
+uint8_t serializeAdd(uint8_t *buf, uint64_t bufSize, uint64_t start, 
                      const struct AddCommand *add) 
 {
         if(start + ADD_SERIAL_SIZE > bufSize) {
@@ -186,12 +186,12 @@ int serializeAdd(uint8_t *buf, uint64_t bufSize, uint64_t start,
 
         buf[start] = (uint8_t) ADD_COMMAND;
         buf[start + 1] = add->symbol;
-        const int read = littleSerialize(buf, bufSize, start + 2, 
+        const uint8_t read = littleSerialize(buf, bufSize, start + 2, 
                 &(add->tgtIndex));
         return 2 + read; // Assuming all went right, this equals ADD_SERIAL_SIZE
 }
 
-int serializeMove(uint8_t *buf, uint64_t bufSize, uint64_t start, 
+uint8_t serializeMove(uint8_t *buf, uint64_t bufSize, uint64_t start, 
                      const struct MoveCommand *move) 
 {
         if(start + MOVE_SERIAL_SIZE > bufSize) {
@@ -203,25 +203,27 @@ int serializeMove(uint8_t *buf, uint64_t bufSize, uint64_t start,
         i++;
 
         // Serializing the source index
-        const int srcIndexRet = littleSerialize(buf, bufSize, i, &(move->srcIndex));
+        const uint8_t srcIndexRet = littleSerialize(buf, bufSize, i, 
+                &(move->srcIndex));
         if(srcIndexRet != 8) {
                 return i + srcIndexRet;
         }
         i += 8;
                 
         // Serializing the target index
-        const int tgtIndexRet = littleSerialize(buf, bufSize, i, &(move->tgtIndex));
+        const uint8_t tgtIndexRet = littleSerialize(buf, bufSize, i, 
+                &(move->tgtIndex));
         if(tgtIndexRet != 8) {
                 return i + tgtIndexRet;
         }
         i += 8;
                 
         // Serializing the length
-        const int lenRet = littleSerialize(buf, bufSize, i, &(move->len));
+        const uint8_t lenRet = littleSerialize(buf, bufSize, i, &(move->len));
         return i - start + lenRet; // Assuming all went right, this equals MOVE_SERIAL_SIZE
 }
 
-int serializeCommand(uint8_t *buf, uint64_t bufSize, uint64_t i, 
+uint8_t serializeCommand(uint8_t *buf, uint64_t bufSize, uint64_t i, 
                      const struct Command *command) 
 {
         if(i >= bufSize) {
@@ -242,7 +244,7 @@ int serializeCommand(uint8_t *buf, uint64_t bufSize, uint64_t i,
 
 // Deserializes a little-endian formatted long from a buffer into a SerialLong
 // respecting the system's endianness.
-int littleDeserialize(const uint8_t *buf, uint64_t bufSize, uint64_t start, 
+uint8_t littleDeserialize(const uint8_t *buf, uint64_t bufSize, uint64_t start, 
         union SerialLong *out) 
 {
         if(start + 8 > bufSize) {
@@ -251,12 +253,12 @@ int littleDeserialize(const uint8_t *buf, uint64_t bufSize, uint64_t start,
 
         if(determineEndian() == 0) {
                 // Little endian
-                for(int i = 0; i < 8; i++) {
+                for(uint8_t i = 0; i < 8; i++) {
                         out->bytes[i] = buf[start + i];
                 }
         } else {
                 // Big endian
-                for(int i = 0; i < 8; i++) {
+                for(uint8_t i = 0; i < 8; i++) {
                         out->bytes[7 - i] = buf[start + i];
                 }
         }
@@ -264,24 +266,25 @@ int littleDeserialize(const uint8_t *buf, uint64_t bufSize, uint64_t start,
         return 8;
 }
 
-int deserializeMove(const uint8_t *buf, uint64_t bufSize, uint64_t start, 
+uint8_t deserializeMove(const uint8_t *buf, uint64_t bufSize, uint64_t start, 
                      struct MoveCommand *move)
 {
-        if(start + MOVE_SERIAL_SIZE - 1 > bufSize) {
+        if(start - 1uLL + MOVE_SERIAL_SIZE > bufSize) {
                 return 0;
         }
 
         uint64_t i = start;
 
         // Serializing the source index
-        const int srcIndexRet = littleDeserialize(buf, bufSize, i, &(move->srcIndex));
+        const uint8_t srcIndexRet = littleDeserialize(buf, bufSize, i, 
+                &(move->srcIndex));
         if(srcIndexRet != 8) {
                 return i + srcIndexRet;
         }
         i += 8;
                 
         // Serializing the target index
-        const int tgtIndexRet = littleDeserialize(buf, bufSize, i, 
+        const uint8_t tgtIndexRet = littleDeserialize(buf, bufSize, i, 
                 &(move->tgtIndex));
         if(tgtIndexRet != 8) {
                 return i + tgtIndexRet;
@@ -289,24 +292,26 @@ int deserializeMove(const uint8_t *buf, uint64_t bufSize, uint64_t start,
         i += 8;
                 
         // Serializing the length
-        const int lenRet = littleDeserialize(buf, bufSize, i, &(move->len));
-        return i - start + lenRet; // Assuming all went right, this equals MOVE_SERIAL_SIZE
+        const uint8_t lenRet = littleDeserialize(buf, bufSize, i, 
+                &(move->len));
+        return lenRet + (uint8_t) (i - start); // Assuming all went right, this equals MOVE_SERIAL_SIZE
 }
 
-int deserializeAdd(const uint8_t *buf, uint64_t bufSize, uint64_t start, 
+uint8_t deserializeAdd(const uint8_t *buf, uint64_t bufSize, uint64_t start, 
                      struct AddCommand *add)
 {
-        if(start + ADD_SERIAL_SIZE - 1 > bufSize) {
+        if(start - 1uLL + ADD_SERIAL_SIZE > bufSize) {
                 return 0;
         }
 
         add->symbol = buf[start];
-        const int read = littleDeserialize(buf, bufSize, start + 1, &(add->tgtIndex));
+        const uint8_t read = littleDeserialize(buf, bufSize, start + 1, 
+                &(add->tgtIndex));
         return 1 + read; // This should always equal ADD_SERIAL_SIZE
 }
 
 
-int deserializeCommand(const uint8_t *buf, uint64_t bufSize, uint64_t i, 
+uint8_t deserializeCommand(const uint8_t *buf, uint64_t bufSize, uint64_t i, 
                      struct Command *dest) 
 {
         if(i >= bufSize) {
@@ -317,10 +322,12 @@ int deserializeCommand(const uint8_t *buf, uint64_t bufSize, uint64_t i,
         dest->type = type;
         switch(type) {
         case MOVE_COMMAND:
-                return 1 + deserializeMove(buf, bufSize, i + 1, &(dest->cmd.move));
+                return 1u + deserializeMove(buf, bufSize, i + 1, 
+                        &(dest->cmd.move));
         case ADD_COMMAND:
-                return 1 + deserializeAdd(buf, bufSize, i + 1, &(dest->cmd.add));
+                return 1u + deserializeAdd(buf, bufSize, i + 1, 
+                        &(dest->cmd.add));
         default: 
-                return 1;
+                return 1u;
         }
 }

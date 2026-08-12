@@ -13,15 +13,15 @@ void setLogFlags(uint32_t newFlags);
 void debug(const char *format, ...);
 
 // Prints the format to stdout if and only if verbose mode is enabled
-int verbose(const char *format, ...);
+int32_t verbose(const char *format, ...);
 
 // Prints the format to stdout if neither quiet nor silent mode are enabled
-int normal(const char *format, ...);
+int32_t normal(const char *format, ...);
 
 // Prints the format to stdout if and only if silent is not enabled. 
-int loud(const char *format, ...);
+int32_t loud(const char *format, ...);
 
 // Prints the format to stderr if and only if silent is not enabled. 
-int error(const char *format, ...);
+int32_t error(const char *format, ...);
 
 #endif

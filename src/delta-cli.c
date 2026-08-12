@@ -10,7 +10,7 @@
 // a million, or 'round-about there
 #define LOOP_MAX 1000000
 
-int displayHelp(uint32_t hasVerboseFlag) 
+int32_t displayHelp(uint32_t hasVerboseFlag) 
 {
         char *home = getenv("DELTA_CLI_HOME");
         if (home == NULL) {
@@ -19,13 +19,13 @@ int displayHelp(uint32_t hasVerboseFlag)
                 return EXIT_FAILURE;
         }
 
-        const int homeLen = strnlen(home, MAX_FILE_PATH_LEN) + 1;
+        const int32_t homeLen = strnlen(home, MAX_FILE_PATH_LEN) + 1;
         if (hasVerboseFlag) {
                 const char helpFile[] = "/res/text/delta-help-long.txt";
                 char *path = malloc(sizeof(helpFile) + sizeof(char) * homeLen);
                 strncpy(path, home, sizeof(char) * homeLen);
                 strncat(path, helpFile, sizeof(helpFile));
-                const int ret = putFile(path);
+                const int32_t ret = putFile(path);
                 free(path);
                 return ret;
         } else {
@@ -33,19 +33,19 @@ int displayHelp(uint32_t hasVerboseFlag)
                 char *path = malloc(sizeof(helpFile) + sizeof(char) * homeLen);
                 strncpy(path, home, sizeof(char) * homeLen);
                 strncat(path, helpFile, sizeof(helpFile));
-                const int ret = putFile(path);
+                const int32_t ret = putFile(path);
                 free(path);
                 return ret;
         }
 }
 
-int displayVersion() 
+int32_t displayVersion() 
 {
-        printf("delta-cli 0.0.0 | Connor Larson, 2026 | MIT license\n");
+        return printf("delta-cli 0.0.0 | Connor Larson, 2026 | MIT license\n");
 }
 
 
-int main(int argc, char **argv) 
+int32_t main(int32_t argc, char **argv) 
 {
         // Parsing arguments if they're available
         if (argc < 1) {
@@ -80,7 +80,7 @@ int main(int argc, char **argv)
         
         // Reporting an error and exiting if any occurred.
         setLogFlags(flags & (VERBOSE_FLAG | QUIET_FLAG | SILENT_FLAG));
-        const int argErr = displayErr(flags, argv, slurpErr, getSlurpIndex());
+        const int32_t argErr = displayErr(flags, argv, slurpErr, getSlurpIndex());
         if (argErr != SLURP_SUCCESS) {
                 free(slurpedPtr);
                 normal("\n");
@@ -89,14 +89,14 @@ int main(int argc, char **argv)
 
         // Running the specified command
         if (flags & DELTA_FLAG) {
-                const int ret = computeDelta(slurpedPtr);
+                const int32_t ret = computeDelta(slurpedPtr);
                 free(slurpedPtr);
                 normal("\n");
                 return ret;
         }
 
         if (flags & RECONSTRUCT_FLAG) {
-                const int ret = reconstructTarget(slurpedPtr);
+                const int32_t ret = reconstructTarget(slurpedPtr);
                 free(slurpedPtr);
                 normal("\n");
                 return ret;

@@ -3,6 +3,6 @@
 
 #include "slurp-arg.h"
 
-int reconstructTarget(struct Slurped *args);
+int8_t reconstructTarget(struct Slurped *args);
 
 #endif

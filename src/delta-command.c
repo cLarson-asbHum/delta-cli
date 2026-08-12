@@ -12,9 +12,9 @@ struct LinkedCommand {
         struct LinkedCommand *next;
 };
 
-int freeLinked(struct LinkedCommand *head) {
+uint32_t freeLinked(struct LinkedCommand *head) {
         struct LinkedCommand *cur = head;
-        int i = 0;
+        uint32_t i = 0;
         while (cur != NULL) {
                 struct LinkedCommand *prev = cur;
                 cur = cur->next;
@@ -51,7 +51,7 @@ void debugLinked(struct LinkedCommand *head)
 {
         if (DEBUG) {
                 struct LinkedCommand *cur = head;
-                int i = 0;
+                uint32_t i = 0;
                 while (cur != NULL) {
                         if (cur->elem != NULL) {
                                 debug("'%c'", cur->elem->type);
@@ -132,7 +132,7 @@ uint64_t computeCmdsFromArgs(const struct Slurped *args, struct LinkedCommand *h
 
 // Returns EXIT_SUCCESS if successful; EXIT_FAILURE otherwise. Error messages are
 // printed on error
-uint32_t outputHeaderV1(FILE *outFile, const struct DeltaHeader *header)
+int32_t outputHeaderV1(FILE *outFile, const struct DeltaHeader *header)
 {
         const uint64_t outSize = V1_DELTA_HEADER_SIZE;
         debug("Allocating %llu bytes for header\n", outSize);
@@ -189,7 +189,7 @@ uint32_t outputHeaderV1(FILE *outFile, const struct DeltaHeader *header)
 
         // Writing the serialized buffer to the output file
         verbose("Writing v1 header to out file\n");
-        const int written = fwrite(outBuf, 1, outSize, outFile);
+        const uint32_t written = fwrite(outBuf, 1, outSize, outFile);
         if (written != outSize || ferror(outFile)) {
                 error("Error while writing header: %s\n", strerror(ferror(outFile)));
                 free(outBuf);
@@ -282,7 +282,7 @@ uint64_t serializeCmds(uint8_t *outBuf, uint64_t bufSize,
         return i;
 }
 
-int computeDelta(const struct Slurped *args) 
+int32_t computeDelta(const struct Slurped *args) 
 {        
         
         // Getting our output file
@@ -306,8 +306,7 @@ int computeDelta(const struct Slurped *args)
         }
         
         // Generating a header, and writing it to our file
-        const uint32_t headRet = writeHeader(args, outFile, outSize);
-        if (headRet != EXIT_SUCCESS) {
+        if (writeHeader(args, outFile, outSize) != EXIT_SUCCESS) {
                 verbose("Cancelled the delta computation\n");
                 freeLinked(head.next);
                 closeMaybeRemove(outFile, args);
@@ -340,8 +339,7 @@ int computeDelta(const struct Slurped *args)
 
         // Writing the serialized output to a file.
         normal("Writing the serialized commands buffer to a file...\n");
-        const int written = fwrite(outBuf, 1, outSize, outFile);
-        if (written != outSize || ferror(outFile)) {
+        if (fwrite(outBuf, 1, outSize, outFile) != outSize || ferror(outFile)) {
                 error("Error while writing delta: %s\n", strerror(ferror(outFile)));
                 free(outBuf);
                 closeMaybeRemove(outFile, args);

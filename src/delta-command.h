@@ -6,6 +6,6 @@
 
 void verboseCmdLog(const struct Command *command);
 
-int computeDelta(const struct Slurped *args);
+int32_t computeDelta(const struct Slurped *args);
 
 #endif

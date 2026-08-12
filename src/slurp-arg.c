@@ -13,7 +13,7 @@ uint32_t getSlurpIndex() {
 }
 
 // 1 if the strings are equal, including by length; a 0 otherwise
-int streq(const char *arg, const char *exp, int maxCount) {
+uint8_t streq(const char *arg, const char *exp, uint16_t maxCount) {
         if (strnlen(arg, maxCount) != strnlen(exp, maxCount)) {
                 return 0;
         }
@@ -22,13 +22,13 @@ int streq(const char *arg, const char *exp, int maxCount) {
 }
 
 // 1 if str ends with (or is equal to) ending. 0 otherwise
-int endsWith(char *str, int strLen, char *ending, int endingLen) {
+uint8_t endsWith(char *str, uint16_t strLen, char *ending, uint16_t endingLen) {
         if (strLen < endingLen) {
                 return 0;
         }
 
         char *subStr = &(str[strLen - endingLen]);
-        for (int i = 0; i < endingLen; i++) {
+        for (uint16_t i = 0; i < endingLen; i++) {
                 debug("subStr[%d] == '%c'   ending[%d] == '%c'\n", i, subStr[i], 
                         i, ending[i]);
                 if (subStr[i] != ending[i]) {
@@ -59,7 +59,8 @@ uint8_t maxPosArgs(uint32_t flags)
         return 0;
 }
 
-enum SlurpErr getPosArgs(struct Slurped *out, int argc, char **argv, int i) 
+enum SlurpErr getPosArgs(struct Slurped *out, uint8_t argc, char **argv, 
+        uint32_t i) 
 {
         // Handling errors with positional argument parsing
         // NOTE: Slurped only currently supports 2 arguments, but that's fine
@@ -78,7 +79,7 @@ enum SlurpErr getPosArgs(struct Slurped *out, int argc, char **argv, int i)
                 return MISSING_POS_ARG;
         }
 
-        // We have exactly as mant positional arguments as we expect.
+        // We have exactly as many positional arguments as we expect.
         // (^ We have yet to check that the pos args have *any* content in them)
         char *arg1 = argv[i];
         out->posArg1Len = strnlen(arg1, MAX_FILE_PATH_LEN);
@@ -185,9 +186,9 @@ enum SlurpErr checkCmd(struct Slurped *out, const char *arg)
         return checkHelpOrVers(out, arg);
 }
 
-enum SlurpErr checkOpt(struct Slurped *out, int argc, char **argv) 
+enum SlurpErr checkOpt(struct Slurped *out, int32_t argc, char **argv) 
 {
-        const int i = slurpIndex;
+        const uint32_t i = slurpIndex;
         const char *arg = argv[i];
         
         if (arg[0] != '-') {
@@ -275,9 +276,9 @@ enum SlurpErr checkOpt(struct Slurped *out, int argc, char **argv)
         return checkHelpOrVers(out, arg);
 }
 
-enum SlurpErr handleArg(struct Slurped *out, int argc, char **argv) 
+enum SlurpErr handleArg(struct Slurped *out, int32_t argc, char **argv) 
 {
-        const int i = slurpIndex;
+        const uint32_t i = slurpIndex;
         const char *arg = argv[i];
         
         // TODO: Optimize: compare in a hash map, and use a switch
@@ -308,7 +309,7 @@ enum SlurpErr handleArg(struct Slurped *out, int argc, char **argv)
         return UNKNOWN_FLAG_OR_ARG;
 }
 
-enum SlurpErr slurpArgs(struct Slurped *out, int argc, char **argv) 
+enum SlurpErr slurpArgs(struct Slurped *out, int32_t argc, char **argv) 
 {
         out->flags = 0;
         out->outputLen = 0;
@@ -320,7 +321,7 @@ enum SlurpErr slurpArgs(struct Slurped *out, int argc, char **argv)
                 return SLURP_SUCCESS;
         }
 
-        int forceBreak = 0;
+        uint8_t forceBreak = 0;
         slurpIndex = 1;
 
         while (!forceBreak && slurpIndex < argc) {
@@ -360,9 +361,10 @@ enum SlurpErr slurpArgs(struct Slurped *out, int argc, char **argv)
 
 // Displays a message for the slurpErr variable. Returns SLURP_SUCCESS if there 
 // was no error to begin with
-enum SlurpErr displayErr(uint32_t flags, char **argv, enum SlurpErr err, int i) 
+enum SlurpErr displayErr(uint32_t flags, char **argv, enum SlurpErr err, 
+        uint32_t i) 
 {
-        const int hasFlag = (flags & ERROR_FLAG);
+        const uint8_t hasFlag = (flags & ERROR_FLAG);
 
         if (hasFlag && err == SLURP_SUCCESS) {
                 error("Garbage program state: success, but error flag was set.\n");

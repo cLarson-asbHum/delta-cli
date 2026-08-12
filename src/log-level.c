@@ -19,17 +19,17 @@ void debug(const char *format, ...) {
         if (DEBUG) {
                 va_list args;
                 va_start(args, format);
-                const int ret = vfprintf(stdout, format, args);
+                const int32_t ret = vfprintf(stdout, format, args);
                 va_end(args);
         }
 }
 
 // Prints the format to stdout if and only if verbose mode is enabled
-int verbose(const char *format, ...) {
+int32_t verbose(const char *format, ...) {
         if ((logFlags & VERBOSE_FLAG)) {
                 va_list args;
                 va_start(args, format);
-                const int ret = vfprintf(stdout, format, args);
+                const int32_t ret = vfprintf(stdout, format, args);
                 va_end(args);
                 return ret;
         }
@@ -38,20 +38,20 @@ int verbose(const char *format, ...) {
 }
 
 // Prints the format to stdout if neither quiet nor silent mode are enabled
-int normal(const char *format, ...) {
+int32_t normal(const char *format, ...) {
         if ((logFlags & QUIET_FLAG) || (logFlags & SILENT_FLAG)) {
                return 0; 
         }
 
         va_list args;
         va_start(args, format);
-        const int ret = vfprintf(stdout, format, args);
+        const int32_t ret = vfprintf(stdout, format, args);
         va_end(args);
         return ret;
 }
 
 // Prints the format to stdout if and only if silent is not enabled. 
-int loud(const char *format, ...) {
+int32_t loud(const char *format, ...) {
         // TODO: Reduced logging mode (between normal and error)
         if (logFlags & SILENT_FLAG) {
                 return 0;
@@ -59,20 +59,20 @@ int loud(const char *format, ...) {
 
         va_list args;
         va_start(args, format);
-        const int ret = vfprintf(stdout, format, args);
+        const int32_t ret = vfprintf(stdout, format, args);
         va_end(args);
         return ret;
 }
 
 // Prints the format to stderr if and only if silent is not enabled. 
-int error(const char *format, ...) {
+int32_t error(const char *format, ...) {
         if (logFlags & SILENT_FLAG) {
                 return 0;
         }
 
         va_list args;
         va_start(args, format);
-        const int ret = vfprintf(stderr, format, args);
+        const int32_t ret = vfprintf(stderr, format, args);
         va_end(args);
         return ret;
 }

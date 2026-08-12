@@ -12,10 +12,17 @@ union SerialDword {
         uint32_t dword;
 };
 
-// Returns the index of the specified chunk
+// Returns the index of the specified chunk, 0 if an error occurs
 uint64_t findChunk(const struct FileBin *delta, uint64_t start, 
         const char chunkName[4], union SerialLong *chunkSize) 
 {
+        if (delta->size < 11uLL) {
+                // Previous code should always have caught this, but we 
+                // check just in case some idiot programmer (me) forgets 
+                // to check
+                return 0;
+        }
+
         union SerialDword exp;
         memcpy(exp.str, chunkName, 4);
         exp.str[4] = '\0';
@@ -47,7 +54,7 @@ uint64_t findChunk(const struct FileBin *delta, uint64_t start,
                                 chunkSize->longVal);
                         start += chunkSize->longVal;
                 }
-        } while (!found && start + 11 < bufSize);
+        } while (!found && start < bufSize - 11uLL);
 
         if (!found) {
                 error("Error while reading delta: Could not find chunk '%s'.\n", 
@@ -97,7 +104,7 @@ uint64_t readAndVerifyV1(const struct Slurped *args, struct DeltaHeader *header,
         }
 
         // Getting the source and target hashes
-        for (int i = 0; i < 32; i++) {
+        for (uint8_t i = 0; i < 32; i++) {
                 v1->sourceHash.bytes[i] = delta->buf[start + i];
                 v1->targetHash.bytes[i] = delta->buf[start + i + 32];
         }
@@ -144,7 +151,7 @@ uint64_t readAndVerifyHeader(const struct Slurped *args,
 {
         // 16 bytes is enough for the magic num, the version, and 
         // the target size
-        if (delta->size < 16) {
+        if (delta->size < 16uLL) {
                 error("Error while reading delta: File was too small (< %d bytes)\n",
                         16);
                 return 0;
@@ -191,16 +198,16 @@ uint64_t readAndVerifyHeader(const struct Slurped *args,
         }
 }
 
-void diagnoseDeserializeError(enum CommandType type, uint64_t cmdSize, uint64_t i, 
+void diagnoseDeserializeError(enum CommandType type, uint8_t cmdSize, uint64_t i, 
         uint64_t read, uint64_t srcSize) 
 {
         error("Error while patching: ");
-        if (cmdSize == -1) {
+        if (cmdSize == GARBAGE_SERIAL_SIZE) {
                 error("Command type '%c' is unknown\n", type);
         } else if (i + cmdSize > srcSize) {
                 error("End of file was reached while deserializing '%c' command\n",
                         type);
-        } else if (read == 0) {
+        } else if (read == 0u) {
                 // Should NEVER happen, but just in case
                 error("Read the start of a command, even though it was out of bounds\n");
         } else {
@@ -242,7 +249,7 @@ void diagnosePatchError(const struct Command *cmd, uint64_t outSize,
 }
 
 // Returns EXIT_FAILURE on error; EXIT_SUCCESS if and only if on success
-uint32_t reconstructFromArgs(const struct Slurped *args, uint8_t *outBuf, 
+int32_t reconstructFromArgs(const struct Slurped *args, uint8_t *outBuf, 
         uint64_t outSize, const uint8_t *cmdBuf, uint64_t cmdBufSize)
 {
         // Opening the source file
@@ -260,8 +267,9 @@ uint32_t reconstructFromArgs(const struct Slurped *args, uint8_t *outBuf,
                 struct Command cmd;
 
                 // Deserializing the command
-                const int read = deserializeCommand(cmdBuf, cmdBufSize, i, &cmd);
-                const int cmdSize = serialSizeOf(&cmd);
+                const uint8_t read = deserializeCommand(cmdBuf, cmdBufSize, i, 
+                        &cmd);
+                const uint8_t cmdSize = serialSizeOf(&cmd);
                 verbose(" \\___ Deserialized %llu-%llu; deserialized cmd '%c'\n", 
                         i, i + read, cmd.type);
 
@@ -280,12 +288,10 @@ uint32_t reconstructFromArgs(const struct Slurped *args, uint8_t *outBuf,
                 // }
 
                 // Applying the command
-                // FIXME: patchCommand should return a uint64_t, as the bounds of a command are LARGE
-                const int patched = patchCommand(src->buf, src->size, outBuf, 
-                        outSize, &cmd);
+                const uint64_t patched = patchCommand(src->buf, src->size, 
+                        outBuf, outSize, &cmd);
                 verbose("   \\___ Patched %llu bytes for type '%c'\n", patched, 
                         cmd.type);
-                // FIXME: patchSizeOf should return a uint64_t, as the bounds of a command are LARGE
                 if (patched != patchSizeOf(&cmd)) {
                         diagnosePatchError(&cmd, outSize, src->size);
                         freeBin(src);
@@ -300,7 +306,9 @@ uint32_t reconstructFromArgs(const struct Slurped *args, uint8_t *outBuf,
 }
 
 
-int reconstructTarget(struct Slurped *args) 
+// Returns EXIT_SUCCESS if the target was successfully reconstructed and 
+// outputted; returns EXIT_FAILURE otherwise
+int32_t reconstructTarget(struct Slurped *args) 
 {
         // Getting our output file
         // This is done first to prevent postponing any errors or prompting
@@ -361,8 +369,7 @@ int reconstructTarget(struct Slurped *args)
 
         // Writing the serialized output to a file.
         normal("Writing the patched target buffer to a file...\n");
-        const int written = fwrite(outBuf, 1, outSize, outFile);
-        if (written != outSize || ferror(outFile)) {
+        if (fwrite(outBuf, 1, outSize, outFile) != outSize || ferror(outFile)) {
                 error("Error while writing delta: %s\n", strerror(ferror(outFile)));
                 free(outBuf);
                 closeMaybeRemove(outFile, args);
