@@ -80,6 +80,19 @@ uint64_t patchSizeOf(const struct Command *command) {
         }
 }
 
+uint64_t lastPatchedIndex(const struct Command *command) 
+{
+        switch (command->type) {
+        case ADD_COMMAND:
+                return command->cmd.add.tgtIndex.longVal;
+        case MOVE_COMMAND:
+                const struct MoveCommand *move = &command->cmd.move;
+                return move->tgtIndex.longVal + move->len.longVal;
+        default:
+                GARBAGE_PATCH_SIZE;
+        }
+}
+
 uint8_t serialSizeOf(const struct Command *command) {
         uint8_t commandType = command->type; // Might be garbage
         switch (commandType) {

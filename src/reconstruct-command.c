@@ -248,21 +248,23 @@ void diagnosePatchError(const struct Command *cmd, uint64_t outSize,
         }
 }
 
-// Returns EXIT_FAILURE on error; EXIT_SUCCESS if and only if on success
-int32_t reconstructFromArgs(const struct Slurped *args, uint8_t *outBuf, 
+// Returns the maximum index set in outBuf, which is equivalent to the size
+// of the target file. If an error occurred, GARBAGE_PATCH_SIZE is returned
+uint64_t reconstructFromArgs(const struct Slurped *args, uint8_t *outBuf, 
         uint64_t outSize, const uint8_t *cmdBuf, uint64_t cmdBufSize)
 {
         // Opening the source file
         struct FileBin *src = readBin(args->posArg1, args->posArg1Len);
         if (src == NULL) {
                 // Message is printed in read bin; not important to even verbose
-                return EXIT_FAILURE;
+                return GARBAGE_PATCH_SIZE;
         }
 
         // TODO: Check the source's hash
 
         // Deserializing successive commands and applying them
         uint64_t i = 0;
+        uint64_t tgtSize = 0;
         while (i < cmdBufSize) {
                 struct Command cmd;
 
@@ -277,7 +279,7 @@ int32_t reconstructFromArgs(const struct Slurped *args, uint8_t *outBuf,
                         diagnoseDeserializeError(cmd.type, cmdSize, i, read, 
                                 src->size);
                         freeBin(src);
-                        return EXIT_FAILURE;
+                        return GARBAGE_PATCH_SIZE;
                 }
 
                 // // TODO: Version checking for commands
@@ -295,14 +297,18 @@ int32_t reconstructFromArgs(const struct Slurped *args, uint8_t *outBuf,
                 if (patched != patchSizeOf(&cmd)) {
                         diagnosePatchError(&cmd, outSize, src->size);
                         freeBin(src);
-                        return EXIT_FAILURE;
+                        return GARBAGE_PATCH_SIZE;
                 }
                 i += cmdSize;
+
+                // Updating the calculated target size
+                const uint64_t last = lastPatchedIndex(&cmd);
+                tgtSize = last > tgtSize ? last : tgtSize;
         }
 
         // Cleaning up
         freeBin(src);
-        return EXIT_SUCCESS;
+        return tgtSize;
 }
 
 
@@ -355,8 +361,11 @@ int32_t reconstructTarget(struct Slurped *args)
         }
 
         // Reconstructing from the commands
-        if (reconstructFromArgs(args, outBuf, outSize, &delta->buf[dataStart], 
-                delta->size - dataStart) != EXIT_SUCCESS) 
+        // We reassign the out size, as the 
+        const uint64_t tgtSize = reconstructFromArgs(args, outBuf, outSize, 
+                &delta->buf[dataStart], delta->size - dataStart);
+        verbose("Got a new serial size of %llu bytes\n", tgtSize);
+        if (tgtSize == GARBAGE_PATCH_SIZE) 
         {
                 // Error message was already sent from serializeCmds()
                 verbose("Cancelled reconstruction\n");
@@ -367,9 +376,14 @@ int32_t reconstructTarget(struct Slurped *args)
         }
         freeBin(delta);
 
+        if (tgtSize < outSize) {
+                loud("Warning: The target size stored in the delta file is greater than the actual target size\n");
+                // TODO: Warnings as errors
+        }
+
         // Writing the serialized output to a file.
         normal("Writing the patched target buffer to a file...\n");
-        if (fwrite(outBuf, 1, outSize, outFile) != outSize || ferror(outFile)) {
+        if (fwrite(outBuf, 1, tgtSize, outFile) != tgtSize || ferror(outFile)) {
                 error("Error while writing delta: %s\n", strerror(ferror(outFile)));
                 free(outBuf);
                 closeMaybeRemove(outFile, args);

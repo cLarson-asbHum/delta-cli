@@ -38,7 +38,7 @@ void verboseCmdLog(const struct Command *command)
                 const uint64_t pSet = command->cmd.move.srcIndex.longVal;
                 const uint64_t qSet = command->cmd.move.tgtIndex.longVal;
                 const uint64_t l    = command->cmd.move.len.longVal;
-                verbose("   \\___ Command: MOVE %llu -> %llu (length ) \n", 
+                verbose("   \\___ Command: MOVE %llu -> %llu (length %llu) \n", 
                         pSet, qSet, l);
                 return ;
         }

@@ -93,6 +93,14 @@ uint64_t patchCommand(const uint8_t *source, uint64_t srcLen,
 // GARBAGE_PATCH_SIZE
 uint64_t patchSizeOf(const struct Command *command);
 
+// Determines the largest index that this command would affect during 
+// reconstruction. The maximum last patched index for a set of commands
+// equals the length of the target file. For an add command, this is equals 
+// tgtIndex member's value; for a move, it is the tgtIndex plus the len.
+//
+// If the command type is unrecognized, this returns GARBAGE_PATCH_SIZE.
+uint64_t lastPatchedIndex(const struct Command *command);
+
 #define MAGIC_NUMBER { 'D', 'L', 'T', 'A'  }
 #define VERSION_CHUNK_NAME { 'v', 'r', 's' }
 #define CURRENT_VERSION 1
