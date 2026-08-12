@@ -103,6 +103,15 @@ uint64_t readAndVerifyV1(const struct Slurped *args, struct DeltaHeader *header,
                 return 0;
         }
 
+        if (v1->metaSize.longVal > V1_META_SIZE) {
+                loud("Warning: Meta chunk size is larger than expected (%llu bytes > %d bytes)\n",
+                        v1->metaSize.longVal, V1_META_SIZE);
+                normal(" \\___ Some data may be erroneously skipped\n");
+                // TODO: Warning as errors
+        }
+
+        const uint64_t metaDataStart = start;
+
         // Getting the source and target hashes
         for (uint8_t i = 0; i < 32; i++) {
                 v1->sourceHash.bytes[i] = delta->buf[start + i];
@@ -114,6 +123,10 @@ uint64_t readAndVerifyV1(const struct Slurped *args, struct DeltaHeader *header,
         // We ignore the cmdLensEqual member, as using it would increase the 
         // complexity of the program (even though it would increase speed)
         start += 4;
+
+        // Skipping to the end of the meta chunk
+        // This won't go out of bounds, as that will have been caught by findChunk()
+        start = metaDataStart + v1->metaSize.longVal;
 
         // Searching for the data chunk.
         // If there is a chunk we don't recognize, we skip it and check the next
