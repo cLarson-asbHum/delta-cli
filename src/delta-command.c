@@ -34,6 +34,13 @@ void verboseCmdLog(const struct Command *command)
                 return ;
         }
 
+        if (command->type == ADD_64_COMMAND && (getLogFlags() & VERBOSE_FLAG)) {
+                const uint64_t c = (uint64_t) (command->cmd.add.symbol);
+                const uint64_t qSet = command->cmd.add.tgtIndex.longVal;
+                verbose("   \\___ Command: ADD_64 0x%02llx at %llu \n", c, qSet);
+                return ;
+        }
+
         if (command->type == MOVE_COMMAND && (getLogFlags() & VERBOSE_FLAG)) {
                 const uint64_t pSet = command->cmd.move.srcIndex.longVal;
                 const uint64_t qSet = command->cmd.move.tgtIndex.longVal;
@@ -79,14 +86,22 @@ uint64_t computeCmds(const struct FileBin *s, const struct FileBin *t,
                 normal(" \\___ %llu / %llu (%.2f%%)\n", q, t->size, 
                         100.0f * (float) q / (float) t->size);
 
-                // TODO: Start from the last p.
+                // WARNING: We assume that command is never NULL, which assumes
+                //          that computeCmds was bound checked before its invocation
                 struct Command *command = nextLargestMove(s->buf, 0, s->size, 
                         &(t->buf[q]), t->size - q);
 
-                if (command->type == ADD_COMMAND) {
+                switch (command->type) {
+                case ADD_COMMAND:
                         command->cmd.add.tgtIndex.longVal = q;
-                } else {
+                        break;
+                case MOVE_COMMAND:
                         command->cmd.move.tgtIndex.longVal = q;
+                        break;
+                case ADD_64_COMMAND:
+                        command->cmd.add64.tgtIndex.longVal = q;
+                        break;
+                // We don't include a default, as it can never fail (see WARNING above)
                 }
                 
                 verboseCmdLog(command);

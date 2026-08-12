@@ -146,7 +146,6 @@ struct Version1Header {
         uint8_t paddingNoOneShouldEverReadOrWriteTo[V1_META_PADDING];
 };
 
-
 #define V2_META_PADDING (3)
 #define V2_META_SIZE (32 + 32 + 1 + V2_META_PADDING)
 #define V2_DELTA_HEADER_SIZE (4 + 3 + 1 + 8 + 4 + 8 + V2_META_SIZE + 4 + 8)

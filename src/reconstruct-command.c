@@ -238,7 +238,7 @@ void diagnosePatchError(const struct Command *cmd, uint64_t outSize,
                 if (cmd->cmd.add.tgtIndex.longVal + patchSizeOf(cmd) > outSize) {
                         error("End of output was reached while patching an add command\n");
                 } else {
-                        error("Unknown move command error\n");
+                        error("Unknown add command error\n");
                 }
                 break;
         case MOVE_COMMAND:
@@ -253,6 +253,12 @@ void diagnosePatchError(const struct Command *cmd, uint64_t outSize,
                         error("Unknown move command error\n");
                 }
                 break;
+        case ADD_64_COMMAND:
+                if (cmd->cmd.add64.tgtIndex.longVal + patchSizeOf(cmd) > outSize) {
+                        error("End of output was reached while patching an add (64-bit) command\n");
+                } else {
+                        error("Unknown add (64-bit) command error\n");
+                }
         default:
                 // Should never happen, as the error should be caught at 
                 // deserialization, not during patching.
