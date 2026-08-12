@@ -212,13 +212,13 @@ uint64_t readAndVerifyHeader(const struct Slurped *args,
 }
 
 void diagnoseDeserializeError(enum CommandType type, uint8_t cmdSize, uint64_t i, 
-        uint64_t read, uint64_t srcSize) 
+        uint64_t read, uint64_t deltaSize) 
 {
         error("Error while patching: ");
         if (cmdSize == GARBAGE_SERIAL_SIZE) {
                 error("Command type '%c' is unknown\n", type);
-        } else if (i + cmdSize > srcSize) {
-                error("End of file was reached while deserializing '%c' command\n",
+        } else if (i + cmdSize >= deltaSize) {
+                error("End of delta file was reached while deserializing '%c' command\n",
                         type);
         } else if (read == 0u) {
                 // Should NEVER happen, but just in case
@@ -290,7 +290,7 @@ uint64_t reconstructFromArgs(const struct Slurped *args, uint8_t *outBuf,
 
                 if (read != cmdSize) {
                         diagnoseDeserializeError(cmd.type, cmdSize, i, read, 
-                                src->size);
+                                cmdBufSize);
                         freeBin(src);
                         return GARBAGE_PATCH_SIZE;
                 }
@@ -374,10 +374,10 @@ int32_t reconstructTarget(struct Slurped *args)
         }
 
         // Reconstructing from the commands
-        // We reassign the out size, as the 
+        // We reassign the out size, as the actual size can be calculated (and 
+        // the one from the delta file may be wrong)
         const uint64_t tgtSize = reconstructFromArgs(args, outBuf, outSize, 
-                &delta->buf[dataStart], delta->size - dataStart);
-        verbose("Got a new serial size of %llu bytes\n", tgtSize);
+                &delta->buf[dataStart], header.dataSize.longVal);
         if (tgtSize == GARBAGE_PATCH_SIZE) 
         {
                 // Error message was already sent from serializeCmds()
@@ -387,6 +387,7 @@ int32_t reconstructTarget(struct Slurped *args)
                 closeMaybeRemove(outFile, args);
                 return EXIT_FAILURE;
         }
+        verbose("Got a new serial size of %llu bytes\n", tgtSize);
         freeBin(delta);
 
         if (tgtSize < outSize) {
