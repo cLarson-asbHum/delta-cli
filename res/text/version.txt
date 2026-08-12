@@ -1,1 +1,1 @@
-delta-cli 0.0.0 | Connor Larson, 2026 | MIT license
+delta-cli 1.0.0 | Connor Larson, 2026 | MIT license
