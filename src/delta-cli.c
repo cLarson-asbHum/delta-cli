@@ -71,7 +71,7 @@ int32_t main(int32_t argc, char **argv)
                 return EXIT_SUCCESS;
         }
         
-        if (flags & VERSION_FLAG) {
+        if (flags & SHOW_VERSION_FLAG) {
                 displayVersion();
                 free(slurpedPtr);
                 normal("\n");

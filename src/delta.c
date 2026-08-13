@@ -88,7 +88,6 @@ struct Command *nextLargest64Move(const uint64_t *source, uint64_t srcStart,
                 uint64_t lCur = 0;
                 uint64_t inBounds = (pCur + lCur < srcLen) && (lCur < tgtMaxCount);
 
-                // TODO: Request more characters
                 while (inBounds && source[pCur + lCur] == target[lCur]) {
                         lCur++;
                         inBounds = (pCur + lCur < srcLen) && (lCur < tgtMaxCount);
@@ -112,8 +111,8 @@ struct Command *nextLargest64Move(const uint64_t *source, uint64_t srcStart,
                 result->type = ADD_64_COMMAND;
                 
                 // NOTE: Consumers MUST override the value of tgtIndex
-                result->cmd.add.tgtIndex.longVal = 0;
-                result->cmd.add.symbol = target[0];
+                result->cmd.add64.tgtIndex.longVal = 0;
+                result->cmd.add64.symbol64 = target[0];
         } else {
                 result->type = MOVE_COMMAND;
                 
@@ -219,12 +218,12 @@ uint64_t patchAdd(uint8_t *out, uint64_t outLen, const struct AddCommand *add)
 
 uint64_t patchAdd64(uint8_t *out, uint64_t outLen, const struct Add64Command *add) 
 {
-        if(add->tgtIndex.longVal >= outLen - 8) {
+        if(add->tgtIndex.longVal + 8 > outLen) {
                 return 0;
         }
 
         ((uint64_t *) &out[add->tgtIndex.longVal])[0] = add->symbol64;
-        return 1uLL;
+        return 8uLL;
 }
 
 uint64_t patchCommand(const uint8_t *source, uint64_t srcLen, uint8_t *out, 
@@ -339,13 +338,14 @@ uint8_t serializeAdd64(uint8_t *buf, uint64_t bufSize, uint64_t start,
                 return 0;
         }
 
+        uint8_t read = 0;
         buf[start] = (uint8_t) ADD_64_COMMAND;
-        start++;
-        ((uint64_t *) &buf[start + 1])[0] = add64->symbol64;
-        start += 8;
+        read++;
+        ((uint64_t *) &buf[start + read])[0] = add64->symbol64;
+        read += 8;
 
         // Assuming all went right, this equals ADD_64_SERIAL_SIZE:
-        return start + littleSerialize(buf, bufSize, start, &add64->tgtIndex);
+        return read + littleSerialize(buf, bufSize, start + read, &add64->tgtIndex);
 }
 
 uint8_t serializeCommand(uint8_t *buf, uint64_t bufSize, uint64_t i, 

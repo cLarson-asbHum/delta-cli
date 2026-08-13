@@ -37,9 +37,9 @@ void verboseCmdLog(const struct Command *command)
         }
 
         if (command->type == ADD_64_COMMAND && (getLogFlags() & VERBOSE_FLAG)) {
-                const uint64_t c = (uint64_t) (command->cmd.add.symbol);
+                const uint64_t c = (uint64_t) (command->cmd.add64.symbol64);
                 const uint64_t qSet = command->cmd.add.tgtIndex.longVal;
-                verbose("   \\___ Command: ADD_64 0x%02llx at %llu \n", c, qSet);
+                verbose("   \\___ Command: ADD_64 0x%016llx at %llu \n", c, qSet);
                 return ;
         }
 
@@ -77,11 +77,15 @@ void debugLinked(struct LinkedCommand *head)
         }
 }
 
+// Computes exclusively MOVE and ADD commands, and thus is guaranteed to be 
+// v1 compatible. This returns 0 if an error is caught. The generated commands 
+// are appended onto the head with first-in-first-out order (as compared to the 
+// usual first-in-last-out).
 uint64_t computeCmds(const struct FileBin *s, const struct FileBin *t, 
-        struct LinkedCommand *head) 
+        uint64_t tStart64, struct LinkedCommand *head) 
 {
         struct LinkedCommand *last = head;
-        uint64_t q = 0;
+        uint64_t q = tStart64;
         uint64_t outSize = 0;
 
         while (q < t->size) {
@@ -99,9 +103,6 @@ uint64_t computeCmds(const struct FileBin *s, const struct FileBin *t,
                         break;
                 case MOVE_COMMAND:
                         command->cmd.move.tgtIndex.longVal = q;
-                        break;
-                case ADD_64_COMMAND:
-                        command->cmd.add64.tgtIndex.longVal = q;
                         break;
                 // We don't include a default, as it can never fail (see WARNING above)
                 }
@@ -123,6 +124,77 @@ uint64_t computeCmds(const struct FileBin *s, const struct FileBin *t,
         return outSize;
 }
 
+// Computes MOVE, ADD, and ADD_64 commands. If the lengths of s and t are not multiples of 8,
+// this will invoke computeCmds() on the last 1-7 bytes of the two strings. This 
+// returns 0 if an error is caught. The generated commands are appended onto the onto the head 
+// with first-in-first-out order (as compared to the usual first-in-last-out).
+uint64_t computeCmds64(const struct FileBin *s, const struct FileBin *t, 
+        uint64_t tStart, struct LinkedCommand *head) 
+{
+        const uint64_t *s64 = (uint64_t *) s->buf;
+        const uint64_t *t64 = (uint64_t *) t->buf;
+        const uint64_t s64Size = s->size >> 3;
+        const uint64_t t64Size = t->size >> 3;
+
+        struct LinkedCommand *last = head;
+        uint64_t q = tStart;
+        uint64_t outSize = 0;
+
+        while (q + 7 < t->size && s64Size != 0) {
+                normal(" \\___ %llu / %llu (%.2f%%)\n", q, t->size, 
+                        100.0f * (float) q / (float) t->size);
+
+                // WARNING: We assume that command is never NULL, which assumes
+                //          that computeCmds was bound checked before its invocation
+                struct Command *command = nextLargest64Move(s64, 0, s64Size, 
+                        &t64[q >> 3], t64Size - (q >> 3));
+
+                switch (command->type) {
+                case ADD_COMMAND:
+                        command->cmd.add.tgtIndex.longVal = q;
+                        break;
+                case MOVE_COMMAND:
+                        command->cmd.move.tgtIndex.longVal = q;
+                        break;
+                case ADD_64_COMMAND:
+                        command->cmd.add64.tgtIndex.longVal = q;
+                        break;
+                // We don't include a default, as it can never fail (see WARNING above)
+                }
+                
+                verboseCmdLog(command);
+                q += patchSizeOf(command);
+                outSize += serialSizeOf(command);
+
+                // Verifying that we only could've landed on a multiple of 8
+                if ((q & 7) != 0) {
+                        error("Garbage state while computing delta: Index in target did not cleanly land on a uint64_t (index was %llu)\n",
+                                q);
+                        freeLinked(head->next);
+                        head->next = NULL;
+                        return 0;
+                }
+
+                // Appending our command to the end of a singly-linked list.
+                // We add to the last elem rather than the head in order to
+                // have first-in-first-out iteration.
+                struct LinkedCommand *append = malloc(sizeof(struct LinkedCommand));
+                append->elem = command;
+                append->next = NULL;
+                last->next = append; // Appending our node onto the last node
+                last = append; // Making our node the last node.
+        }
+
+        // Handling any uncompared bytes at the end
+        if ((t->size & 7) != 0 && s->size != 0) {
+                debug("Parsing the end %d bytes of T separately\n", t->size & 7);
+                debug(" \\___ Starting at index %llu of T\n", t64Size << 3);
+                outSize += computeCmds(s, t, t64Size << 3, last);
+        }
+
+        return outSize;
+}
+
 // Returns 0 if an error occurred
 uint64_t computeCmdsFromArgs(const struct Slurped *args, struct LinkedCommand *head) 
 {
@@ -139,8 +211,25 @@ uint64_t computeCmdsFromArgs(const struct Slurped *args, struct LinkedCommand *h
         }
 
         // Computing the commands
+        int16_t version = CURRENT_VERSION;
+        if (args->flags & FILE_VERSION_FLAG) {
+                version = args->version;
+        }
+
+
         normal("Computing ... (takes a lot of time)\n");
-        const uint64_t outSize = computeCmds(s, t, head);
+        uint64_t outSize = 0;
+        switch (version) {
+        case 1: 
+                outSize = computeCmds(s, t, 0, head);
+                break;
+        case 2: 
+                outSize = computeCmds64(s, t, 0, head);
+                break;
+        default: 
+                outSize = 0;
+                break;
+        }
         debugLinked(head);
         freeBin(s);
         freeBin(t);
@@ -377,9 +466,8 @@ int32_t outputHeader(FILE *outFile, const struct DeltaHeader *header,
 int32_t writeHeader(const struct Slurped *args, FILE *outFile, uint64_t dataSize,
         uint32_t headerFlags) 
 {
-        
         int16_t version = CURRENT_VERSION;
-        if (args->flags & VERSION_FLAG) {
+        if (args->flags & FILE_VERSION_FLAG) {
                 version = args->version;
         }
 

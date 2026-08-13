@@ -194,7 +194,7 @@ uint64_t readAndVerifyHeader(const struct Slurped *args,
         header->versionId = delta->buf[start + 3];
         start += 4;
 
-        if (args->flags & VERSION_FLAG) {
+        if (args->flags & FILE_VERSION_FLAG) {
                 // Overriding the deserialized version if the --file-version flag
                 // was set
                 header->versionId = args->version;
@@ -268,10 +268,11 @@ void diagnosePatchError(const struct Command *cmd, uint64_t outSize,
                 } else {
                         error("Unknown add (64-bit) command error\n");
                 }
+                break;
         default:
                 // Should never happen, as the error should be caught at 
                 // deserialization, not during patching.
-                error("Command type 'c' is unknown\n", cmd->type);
+                error("Command type '%c' is unknown\n", cmd->type);
                 break;
         }
 }

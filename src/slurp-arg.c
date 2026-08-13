@@ -154,7 +154,7 @@ enum SlurpErr checkHelpOrVers(struct Slurped *out, const char *arg)
         if (streq(arg, "-v", 3) || streq(arg, "--version", 10) 
                 || streq(arg, "-version", 9)) 
         {
-                out->flags = (out->flags | VERSION_FLAG);
+                out->flags = (out->flags | SHOW_VERSION_FLAG);
                 return SLURP_SUCCESS;
         }
 
@@ -367,7 +367,7 @@ enum SlurpErr slurpArgs(struct Slurped *out, int32_t argc, char **argv)
 
         // No need to parse positional arguments for help and version
         // This allows these commands to, as the docs say, ignore everything else.
-        if ((out->flags & HELP_FLAG) || (out->flags & VERSION_FLAG)) {
+        if ((out->flags & HELP_FLAG) || (out->flags & SHOW_VERSION_FLAG)) {
                 return SLURP_SUCCESS;
         }
 

@@ -6,7 +6,7 @@
 #define MAX_FILE_PATH_LEN 512
 
 #define HELP_FLAG               (1u << (0))
-#define VERSION_FLAG            (1u << (1))
+#define SHOW_VERSION_FLAG       (1u << (1))
 #define DELTA_FLAG              (1u << (2))
 #define RECONSTRUCT_FLAG        (1u << (3))
 #define VERBOSE_FLAG            (1u << (4))
