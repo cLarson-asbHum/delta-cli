@@ -194,6 +194,14 @@ uint64_t readAndVerifyHeader(const struct Slurped *args,
         header->versionId = delta->buf[start + 3];
         start += 4;
 
+        if (args->flags & VERSION_FLAG) {
+                // Overriding the deserialized version if the --file-version flag
+                // was set
+                header->versionId = args->version;
+        }
+        verbose("The delta file is being parsed as version %d\n", 
+                header->versionId);
+
         // Getting the target size
         littleDeserialize(delta->buf, delta->size, start, &header->targetSize);
         verbose("Got target length as %llu bytes\n", header->targetSize.longVal);
@@ -201,6 +209,7 @@ uint64_t readAndVerifyHeader(const struct Slurped *args,
 
         // Handling the other stuff. This also sets the data chunk size
         switch (header->versionId) {
+        case 2: // Version 2 header has no special handling compared to v1
         case 1:
                 return readAndVerifyV1(args, header, delta, start);
 
@@ -302,12 +311,11 @@ uint64_t reconstructFromArgs(const struct Slurped *args, uint8_t *outBuf,
                         return GARBAGE_PATCH_SIZE;
                 }
 
-                // // TODO: Version checking for commands
-                // if (supportedVersion(cmd.type) > version) {
-                //         loud("Warning: Command '%c' is supported in versions %d and above, but we're in version %d\n",
-                //                 cmd.type, supportedVersion(cmd.type), version);
-                //         // TODO: Warnings-as-errors flag
-                // }
+                if (minVersion(cmd.type) > args->version) {
+                        loud("Warning: Command '%c' is only supported in versions %d and above (active version = %d)\n",
+                                cmd.type, minVersion(cmd.type), args->version);
+                        // TODO: Warnings-as-errors flag
+                }
 
                 // Applying the command
                 const uint64_t patched = patchCommand(src->buf, src->size, 
@@ -364,6 +372,7 @@ int32_t reconstructTarget(struct Slurped *args)
                 closeMaybeRemove(outFile, args);
                 return EXIT_FAILURE;
         }
+        args->version = header.versionId; // Hack to tell version without new variables
         
         // Allocating our destination for reconstruction
         normal("Patching our commands to an output buffer... (takes a lot of time)\n");
