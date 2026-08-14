@@ -5,6 +5,7 @@
 #ifndef HASH_H
 #define HASH_H
 
+#include <stdint.h>
 #include <stdio.h>
 
 // A SHA that is used as a placeholder. A warning should be issued if
@@ -22,28 +23,35 @@ union Sha256 {
         uint64_t longs[4];
 };
 
-// Writes the sha256 digest in little-endian format to the given stream.
-// This returns the same status as `fwrite()` from `<stdio.h>`
-int writeSha(FILE *outStream, const union Sha256 *sha256);
+// Gets the number of zeros that would be appended to a message of `msgBytes` 
+// octets.
+uint64_t solveK(uint64_t msgBytes);
 
-// Reads a little-endian SHA-256 digest from the specified stream stored as 
-// arbitrary binary, writing the output to the specified Sha256 pointer. This 
-// will attempt to read exactly 32 bytes from the stream, starting at the file's 
-// current position. If the end of the file is reached (or an error occurs while 
-// reading), this will read fewer bytes.
-//
-// The return value is the number of bytes read. If all goes well, this returns
-// 32. It must **never** return more than 32, or fewer than 0.
-int readBinarySha(const FILE *inStream, union Sha256 *out);
+// Gets the length that a message of `msgBytes` octets would be padded to for 
+// SHA-256 hashing. The return value is in bytes, not bits! If msgBytes is too large 
+// (>= 2**61), this returns 0; this is the only error that can occur
+uint64_t paddedLen(uint64_t msgBytes);
 
-// Reads a little-endian SHA-256 digest from the specified stream stored as 
-// printable hex digits, writing the output to the specified Sha256 pointer. This 
-// will attempt to read exactly 64 bytes from the stream, starting at the file's 
-// current position. If the end of the file is reached (or an error occurs while 
-// reading), this will read fewer bytes.
+// Pads the message with a 1 bit, 0s, and the length of the message, until
+// the message length is multiple of 512 bits. This follows the RFC spec 
+// section 4.1. 
+// 
+// If the message is not successfully padded (e.g. the output buffer is too 
+// small), this function will return 0; otherwise, it returns a non-zero value
+// that is equal to the final padded message length, in bytes (not bits).
 //
-// The return value is the number of bytes read. If all goes well, this returns
-// 64. It must **never** return more than 64, or fewer than 0.
-int readHexSha(const FILE *asciiHex, union Sha256 *out);
+//  - msgBytes is too large (i.e. >= 2**61)
+//  - msg is NULL
+//  - outLen is too small to contain the padded output
+//  - outBuf is NULL
+//
+// Note that outLen need not be a multiple of 64 (bytes) in order for the
+// function to succeed; rather, any bytes beyond those necessary for the padding
+// are ignored when
+//
+// outLen and msgBytes are measured in the number of bytes they store, not bits.
+// msg and outBuf will be stored in little endian format. 
+uint64_t padMsg(uint8_t *outBuf, uint64_t outBytes, const uint8_t *msg, 
+        uint64_t msgBytes);
 
 #endif 
