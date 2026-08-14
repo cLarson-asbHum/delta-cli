@@ -146,7 +146,7 @@ uint64_t computeCmds64(const struct FileBin *s, const struct FileBin *t,
 
                 // WARNING: We assume that command is never NULL, which assumes
                 //          that computeCmds was bound checked before its invocation
-                struct Command *command = nextLargest64Move(s64, 0, s64Size, 
+                struct Command *command = nextLargest64Move(s64, s64Size, 
                         &t64[q >> 3], t64Size - (q >> 3));
 
                 switch (command->type) {

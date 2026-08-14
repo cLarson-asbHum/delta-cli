@@ -65,32 +65,36 @@ struct Command *nextLargestMove(const uint8_t *source,
         return result;
 }
 
-struct Command *nextLargest64Move(const uint64_t *source, uint64_t srcStart, 
-        uint64_t srcLen, const uint64_t *target, uint64_t tgtMaxCount) 
+// Reads the address of X, and dereferences it as a uint64_t
+#define READ_64(X) ( *((uint64_t *) &(X)) )
+
+struct Command *nextLargest64Move(const uint64_t *source, uint64_t srcLen, 
+        const uint64_t *target, uint64_t tgtMaxCount) 
 {
-        if(srcStart >= srcLen || tgtMaxCount <= 0) {
+        if(srcLen <= 0 || srcLen > (UINT64_MAX / 8) || tgtMaxCount <= 0) {
                 return NULL;
         }
 
+        const uint8_t *src8b = (uint8_t *) source;
+        const uint64_t src8bLen = srcLen * 8;
+        
         // Finding the maximal l and its corresponding p
-        uint64_t p = srcStart; // Index in source
-        uint64_t l = 0;        // Length of the move (0 if addition)
-
-        const uint64_t pStart = srcStart;
-        uint64_t pCur = srcStart;
+        uint64_t p = 0; // Index to a byte, not a uint64_t, in src8b
+        uint64_t l = 0; // Length of the move (0 if addition), in bytes (not uints)
+        uint64_t pCur = 0; // Index to a bytes, not a uint64
 
         // Checking over every character in source, starting at pStart, 
         // wrapping around if we hit the end of source, and ending when 
         // the next pCur is at pStart
-        while ((pCur + 1) % srcLen != pStart && tgtMaxCount > l) {
+        while (pCur < src8bLen && l < tgtMaxCount) {
                 // Determine length of match between source[pCur....] 
                 // and target[q,...]
-                uint64_t lCur = 0;
-                uint64_t inBounds = (pCur + lCur < srcLen) && (lCur < tgtMaxCount);
+                uint64_t lCur = 0; // Number of bytes
+                uint64_t inBounds = (pCur + lCur < src8bLen) && (lCur < tgtMaxCount);
 
-                while (inBounds && source[pCur + lCur] == target[lCur]) {
-                        lCur++;
-                        inBounds = (pCur + lCur < srcLen) && (lCur < tgtMaxCount);
+                while (inBounds && READ_64(src8b[pCur + lCur]) == target[lCur / 8]) {
+                        lCur += 8;
+                        inBounds = (pCur + lCur < src8bLen) && (lCur < tgtMaxCount);
                 }
 
                 if (lCur > l) {
@@ -99,8 +103,7 @@ struct Command *nextLargest64Move(const uint64_t *source, uint64_t srcStart,
                         p = pCur;
                 }
 
-                // Wrapping back to the start if we reach the end of source
-                pCur = (pCur + 1) % srcLen;
+                pCur++;
         }
 
         // Formatting our result as a command
@@ -118,8 +121,8 @@ struct Command *nextLargest64Move(const uint64_t *source, uint64_t srcStart,
                 
                 // NOTE: Consumers MUST override the value of tgtIndex
                 result->cmd.move.tgtIndex.longVal = 0;
-                result->cmd.move.srcIndex.longVal = p << 3;
-                result->cmd.move.len.longVal = l << 3;
+                result->cmd.move.srcIndex.longVal = p;
+                result->cmd.move.len.longVal = l;
         }
 
         return result;

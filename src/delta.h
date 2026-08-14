@@ -85,8 +85,8 @@ struct Command *nextLargestMove(const uint8_t *source, uint64_t srcStart,
 // srcLen   - length of the source string, in number of words (not bytes)
 // target   - pointer to the first word of the prefix (start of L in Tichy)
 // tgtMaxCount - maximum length of the prefix, in number of words
-struct Command *nextLargest64Move(const uint64_t *source, uint64_t srcStart, 
-        uint64_t srcLen, const uint64_t *target, uint64_t tgtMaxCount);
+struct Command *nextLargest64Move(const uint64_t *source, uint64_t srcLen, 
+        const uint64_t *target, uint64_t tgtMaxCount);
 
 #define GARBAGE_PATCH_SIZE UINT64_MAX
 
