@@ -74,8 +74,8 @@ uint64_t padMsg(uint8_t *outBuf, uint64_t outBytes, const uint8_t *msg,
         }
 
         // Writing the length in big endian
-        for (uint8_t i = finalLenBytes - 8; i < finalLenBytes; i++) {
-                const uint8_t shift = 8 * (i - finalLenBytes + 8);
+        for (uint64_t i = finalLenBytes - 8; i < finalLenBytes; i++) {
+                const uint64_t shift = 8 * (i - finalLenBytes + 8);
                 outBuf[i] = ((8 * msgBytes) & (0xff << (56 - shift))) >> (56 - shift);
         }
         return finalLenBytes;
@@ -321,6 +321,10 @@ uint64_t computeFileHash(union Sha256 *dest, FILE *file)
                 uint8_t block[128];
                 uint64_t blockLength = 64; // Might change when padded
                 memcpy(block, rawBlock, bytesRead);
+
+                if (bytesRead < 64) {
+                        blockLength = padBlock(block, 128, rawBlock, msgLen);
+                } 
 
                 if (blockLength == 0) {
                         // Should never happen, but just in case
