@@ -39,7 +39,7 @@ int32_t putFile(char *fileName)
         return EXIT_SUCCESS;
 }
 
-FILE *attemptRFileOpen(char *filename, uint16_t maxCount) 
+FILE *attemptRFileOpen(const char *filename, uint16_t maxCount) 
 {
         // Getting the file name 
         char *subName = malloc(sizeof(char) * (maxCount + (uint16_t) 1u));

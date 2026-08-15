@@ -71,6 +71,42 @@ uint64_t findChunk(const struct FileBin *delta, uint64_t start,
         return start;
 }
 
+uint8_t checkHash(const char *filename, uint16_t filenameLen, 
+        const union Sha256 *expected) 
+{
+        const union Sha256 nullHash = NULL_SHA;
+        if (hashesEqual(expected, &nullHash)) {
+                loud("Warning: The source file's hash stored in the delta file was marked as null\n");
+                normal(" \\___ Verification of the file's hash has been skipped.\n");
+                return 1;
+        }
+
+        // Checking the hash
+        FILE *file = attemptRFileOpen(filename, filenameLen);
+        if (file == NULL) {
+                normal(" \\___ If the error persists, this check can be bypassed with --ignore-hash\n");
+                verbose("Cancelled file hash\n");
+                return 0;
+        }
+
+        union Sha256 hash;
+        if (computeFileHash(&hash, file) == 0) {
+                normal(" \\___ If the error persists, this check can be bypassed with --ignore-hash\n");
+                verbose("Cancelled file hash\n");
+                return 0;
+        }
+
+        if (fclose(file) != 0) {
+                error("Error while hashing file: Could not close file\n");
+                loud(  " \\___ Reason: %s\n", strerror(ferror(file)));
+                normal(" \\___ If the error persists, this check can be bypassed with --ignore-hash\n");
+                verbose("Cancelled file hash\n");
+                return 0;
+        }
+
+        return hashesEqual(&hash, expected);
+}
+
 // Returns the index at which commands start, i.e. the index after 
 // DeltaHeader.dataSize. If an error occurs, this returns 0; this shouldn't be 
 // misinterpreted as an actual index, as a delta file MUST have at least 
@@ -118,6 +154,14 @@ uint64_t readAndVerifyV1(const struct Slurped *args, struct DeltaHeader *header,
                 v1->targetHash.bytes[i] = delta->buf[start + i + 32];
         }
         start += 64;
+
+        if (!(args->flags & IGNORE_HASH_FLAG) && !checkHash(args->posArg1, 
+                args->posArg1Len, &v1->sourceHash)) 
+        {
+                error("Error while reading delta: Source file's hash (SHA-256) did not equal the hash in the delta file\n");
+                normal(" \\___ If the error persists, this check can be bypassed with --ignore-hash\n");
+                return 0;
+        }
 
         // Skipping cmdLensEqual and the padding bytes
         // We ignore the cmdLensEqual member, as using it would increase the 
@@ -273,8 +317,6 @@ uint64_t reconstructFromArgs(const struct Slurped *args, uint8_t *outBuf,
                 return GARBAGE_PATCH_SIZE;
         }
 
-        // TODO: Check the source's hash
-
         // Deserializing successive commands and applying them
         uint64_t i = 0;
         uint64_t tgtSize = 0;
@@ -404,8 +446,37 @@ int32_t reconstructTarget(struct Slurped *args)
                 closeMaybeRemove(outFile, args);
                 return EXIT_FAILURE; // TODO: Error code
         }
+        
+        // Verifying the hash of the reconstructed file
+        const union Sha256 *expHash = &header.header.v1.targetHash;
+        const union Sha256 nullHash = NULL_SHA;
+        if (!(args->flags & IGNORE_HASH_FLAG) && !hashesEqual(expHash, &nullHash)) {
+                // TODO: When format version control is done, use that for exp hash
+                union Sha256 reconHash;
+                normal("Verifying the hash (SHA-256) of our reconstructed file...\n");
 
-        // TODO: Verify hash of the reconstructed file.
+                if (computeHash(&reconHash, outBuf, tgtSize) == 0) {
+                        error("Error while hashing target: The target could not be hashed (reason unknown)\n");
+                        normal(" \\___ If the error persists, this check can be bypassed with --ignore-hash\n");
+                        free(outBuf);
+                        closeMaybeRemove(outFile, args);
+                        return EXIT_FAILURE;
+                }
+        
+                if (!hashesEqual(&reconHash, expHash)) 
+                {
+                        error("Warning: Target file's hash (SHA-256) did not equal the hash in the delta file\n");
+                        normal(" \\___ The file has been preserved, but it may or may not be corrupted\n");
+                        normal(" \\___ This warning can be suppressed using the --ignore-hash flag\n");
+                        free(outBuf);
+                        fclose(outFile); // We DON'T want to delete the file, just in case it's good
+                        return EXIT_FAILURE;
+                }
+        } else if (!(args->flags & IGNORE_HASH_FLAG)) {
+                loud("Warning: The target file's hash stored in the delta file was marked as null\n");
+                normal(" \\___ Verification of the file's hash has been skipped.\n");
+                // TODO: Warnings-as-errors flag
+        } 
 
         // Cleaning up
         normal("Finished outputing the delta\n");

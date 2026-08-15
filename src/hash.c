@@ -75,7 +75,7 @@ uint64_t padMsg(uint8_t *outBuf, uint64_t outBytes, const uint8_t *msg,
 
         // Writing the length in big endian
         for (uint64_t i = finalLenBytes - 8; i < finalLenBytes; i++) {
-                const uint64_t shift = 8 * (i - finalLenBytes + 8);
+                const uint8_t shift = 8 * (i - finalLenBytes + 8);
                 outBuf[i] = ((8 * msgBytes) & (0xff << (56 - shift))) >> (56 - shift);
         }
         return finalLenBytes;

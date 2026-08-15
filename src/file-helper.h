@@ -17,7 +17,7 @@ int32_t putFile(char *fileName);
 // Attempts to open a read-only file, displaying a message if the file cannot 
 // be opened. If the file cannot be opened, this returns NULL. The file must be 
 // closed with `fclose()` after usage
-FILE *attemptRFileOpen(char *filename, uint16_t maxCount); 
+FILE *attemptRFileOpen(const char *filename, uint16_t maxCount); 
 
 // Attempts to create a write-only file, displaying a message if the file cannot
 // be opened. If the file cannot be opened, this returns NULL. If a file already 
