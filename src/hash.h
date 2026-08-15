@@ -6,17 +6,13 @@
 #define HASH_H
 
 #include <stdint.h>
+#include <stdio.h>
 
 // 256-bit digest of a SHA-2 hash.
 union Sha256  {
         uint8_t bytes[32];
         uint32_t words32[8];
 };
-
-#ifndef NULL
-#define NULL ((void *)0)
-#endif /* NULL */
-
 
 // A SHA that is used as a placeholder. A warning should be issued if
 // a null SHA is detected and the --ignore-hash flag is not present. An
@@ -56,6 +52,18 @@ uint64_t paddedLen(uint64_t msgBytes);
 // outLen and msgBytes are measured in the number of bytes they store, not bits.
 uint64_t padMsg(uint8_t *outBuf, uint64_t outBytes, const uint8_t *msg, 
         uint64_t msgBytes);
+
+// Pads a partial block as though it is the last block of a message. This
+// assumes that partialBlock comprises the last block of the message, and that 
+// its length (the length of partialBlock) is equal to `msgBytes % 64`. Behavior 
+// is undefined if it is not. The output buffer ought to be at least 128 bytes in 
+// length in order to contain the padded block.
+//
+// This function returns the final length (in bytes) of the block after padding, 
+// which is either 64 or 128 under normal circumstances, but is 0 if an error 
+// occurs. All error states are identical to those for padMsg().
+uint64_t padBlock(uint8_t *outBuf, uint64_t outBytes, 
+        const uint8_t *partialBlock, uint64_t msgBytes);
 
 // Shifts x right by n bits, and appends the n least significant bits to the
 // left of x (most significant). Behavior is undefined if n is 32 or more
@@ -147,5 +155,14 @@ uint8_t computeBlockHash(union Sha256 *destination, const uint8_t block[64]);
 // This function is derived from the steps given in RFC 6234 section 6.2
 uint64_t computeHash(union Sha256 *destination, const uint8_t *msg, 
         uint64_t msgBytes);
+
+// Returns 1 if and only if every byte of the two hashes is the same.
+uint8_t hashesEqual(const union Sha256 *h1, const union Sha256 *h2);
+
+// Writes the given file's SHA256 hash to the given output. This returns the 
+// number of 512-bit blocks that were computed by this except when an error 
+// occurs, in which it returns 0. This can only return 0 if an error occurs. 
+// Messages are sent to stderr upon any error.
+uint64_t computeFileHash(union Sha256 *dest, FILE *file);
 
 #endif /* HASH_H */

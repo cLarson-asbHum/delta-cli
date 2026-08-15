@@ -6,6 +6,7 @@
 #include "delta-command.h"
 #include "delta.h"
 #include "file-helper.h"
+#include "hash.h"
 
 struct LinkedCommand {
         struct Command *elem;
@@ -229,22 +230,40 @@ uint32_t writeHeader(const struct Slurped *args, FILE *outFile, uint64_t dataSiz
         }
 
         header.targetSize.longVal = fileLength(tgt);
-
         verbose("Target Size: %llu bytes\n", header.targetSize.longVal);
+
+        // Generating a file hash for the target and source
+        if (!(args->flags & IGNORE_HASH_FLAG)) {
+                // The target file
+                normal("Computing file hash for the target...\n");
+                if (computeFileHash(&v1->targetHash, tgt) == 0) {
+                        verbose("Cancelled header write\n");
+                        fclose(tgt);
+                        return EXIT_FAILURE;
+                }
+
+                // The source file
+                FILE *src = attemptRFileOpen(args->posArg1, args->posArg1Len);
+                if (src == NULL) {
+                        verbose("Cancelled header write\n");
+                        fclose(tgt); // Doesn't matter if it fails
+                        return EXIT_FAILURE;
+                }
+
+                normal("Computing file hash for the source...\n");
+                if (computeFileHash(&v1->sourceHash, src) == 0) {
+                        verbose("Cancelled header write\n");
+                        fclose(src); // Doesn't really matter if this fails
+                        return EXIT_FAILURE;
+                }
+                fclose(src); // Doesn't really matter if this fails
+        }
+
         verbose("Closing the aforementioned read-only target file\n");
         if (fclose(tgt) != 0) {
                 error("Error while formatting header: Could not close target file\n");
                 loud(" \\___ Reason: %s\n", strerror(ferror(tgt)));
                 return EXIT_FAILURE;
-        }
-
-        // Generating file hashes
-        // FIXME: We don't currently support file hashing here, so we default to ignore
-        debug("Ignore hash flag: %08x\n", args->flags & IGNORE_HASH_FLAG);
-        if (1 || (args->flags & IGNORE_HASH_FLAG)) {
-                loud("Warning: Ignoring hash generation for source and target files\n");
-                normal(" \\___ The reconstructed target could possibly be silently corrupted as a result\n");
-                // TODO: Warnings-as-errors flag
         }
 
         // Writing the header
