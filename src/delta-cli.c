@@ -15,7 +15,7 @@ int32_t displayHelp(uint32_t hasVerboseFlag)
         char *home = getenv("DELTA_CLI_HOME");
         if (home == NULL) {
                 error("Could not print help message.\n");
-                normal(" \\___ %DELTA_CLI_HOME% environment variable could not be found");
+                detail(" \\___ %DELTA_CLI_HOME% environment variable could not be found");
                 return EXIT_FAILURE;
         }
 
@@ -53,7 +53,7 @@ int32_t main(int32_t argc, char **argv)
                 return EXIT_FAILURE; // Unreachable
         }
 
-        normal("\n");
+        loud("\n");
         struct Slurped *slurpedPtr = malloc(sizeof(struct Slurped));
         const enum SlurpErr slurpErr = slurpArgs(slurpedPtr, argc, argv);
         const uint32_t flags = slurpedPtr->flags;
@@ -65,25 +65,26 @@ int32_t main(int32_t argc, char **argv)
 
         // Help and version flags take precedent over everything (including errors)
         if (flags & HELP_FLAG) {
-                displayHelp(flags & VERBOSE_FLAG);
+                displayHelp(getLogLevel() >= VERBOSE_LVL);
                 free(slurpedPtr);
-                normal("\n");
+                loud("\n");
                 return EXIT_SUCCESS;
         }
         
         if (flags & VERSION_FLAG) {
                 displayVersion();
                 free(slurpedPtr);
-                normal("\n");
+                loud("\n");
                 return EXIT_SUCCESS;
         }
         
         // Reporting an error and exiting if any occurred.
-        setLogFlags(flags & (VERBOSE_FLAG | QUIET_FLAG | SILENT_FLAG));
+        setLogLevel(flagsToLogLevel(flags));
+        debug("Log level was set to %d\n", getLogLevel());
         const int32_t argErr = displayErr(flags, argv, slurpErr, getSlurpIndex());
         if (argErr != SLURP_SUCCESS) {
                 free(slurpedPtr);
-                normal("\n");
+                loud("\n");
                 return argErr;
         }
 
@@ -91,19 +92,19 @@ int32_t main(int32_t argc, char **argv)
         if (flags & DELTA_FLAG) {
                 const int32_t ret = computeDelta(slurpedPtr);
                 free(slurpedPtr);
-                normal("\n");
+                loud("\n");
                 return ret;
         }
 
         if (flags & RECONSTRUCT_FLAG) {
                 const int32_t ret = reconstructTarget(slurpedPtr);
                 free(slurpedPtr);
-                normal("\n");
+                loud("\n");
                 return ret;
         }
 
         // Unreachable under normal operation
         error("Garbage state: No error occurred despite the command being unknown.\n");
-        normal("\n");
+        loud("\n");
         return EXIT_FAILURE;
 }

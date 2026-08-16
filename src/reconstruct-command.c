@@ -47,9 +47,9 @@ uint64_t findChunk(const struct FileBin *delta, uint64_t start,
 
                 // Skipping this current chunk if it isn't the meta chunk
                 if(!found) {
-                        loud("Warning: Encountered unexpected chunk \"%s\". It has been skipped\n",
+                        warn("Warning: Encountered unexpected chunk \"%s\". It has been skipped\n",
                                 curName.str);
-                        normal(" \\___ Was expecting \"%s\"\n", exp.str);
+                        detail(" \\___ Was expecting \"%s\"\n", exp.str);
                         verbose(" \\___ Byte %llu: Skipping %llu bytes\n", start, 
                                 chunkSize->longVal);
                         start += chunkSize->longVal;
@@ -76,30 +76,30 @@ uint8_t checkHash(const char *filename, uint16_t filenameLen,
 {
         const union Sha256 nullHash = NULL_SHA;
         if (hashesEqual(expected, &nullHash)) {
-                loud("Warning: The source file's hash stored in the delta file was marked as null\n");
-                normal(" \\___ Verification of the file's hash has been skipped.\n");
+                warn("Warning: The source file's hash stored in the delta file was marked as null\n");
+                info(" \\___ Verification of the file's hash has been skipped.\n");
                 return 1;
         }
 
         // Checking the hash
         FILE *file = attemptRFileOpen(filename, filenameLen);
         if (file == NULL) {
-                normal(" \\___ If the error persists, this check can be bypassed with --ignore-hash\n");
+                info(" \\___ If the error persists, this check can be bypassed with --ignore-hash\n");
                 verbose("Cancelled file hash\n");
                 return 0;
         }
 
         union Sha256 hash;
         if (computeFileHash(&hash, file) == 0) {
-                normal(" \\___ If the error persists, this check can be bypassed with --ignore-hash\n");
+                info(" \\___ If the error persists, this check can be bypassed with --ignore-hash\n");
                 verbose("Cancelled file hash\n");
                 return 0;
         }
 
         if (fclose(file) != 0) {
                 error("Error while hashing file: Could not close file\n");
-                loud(  " \\___ Reason: %s\n", strerror(ferror(file)));
-                normal(" \\___ If the error persists, this check can be bypassed with --ignore-hash\n");
+                loud(" \\___ Reason: %s\n", strerror(ferror(file)));
+                info(" \\___ If the error persists, this check can be bypassed with --ignore-hash\n");
                 verbose("Cancelled file hash\n");
                 return 0;
         }
@@ -117,7 +117,7 @@ uint64_t readAndVerifyV1(const struct Slurped *args, struct DeltaHeader *header,
         if (delta->size < V1_DELTA_HEADER_SIZE) {
                 error("Error while reading delta: Delta file's header is too small (size < %d bytes)\n",
                         V1_DELTA_HEADER_SIZE);
-                normal(" \\___ A delta generated with the --preserve flag may be incomplete because of an error\n");
+                info(" \\___ A delta generated with the --preserve flag may be incomplete because of an error\n");
                 return 0;
         }
 
@@ -140,9 +140,9 @@ uint64_t readAndVerifyV1(const struct Slurped *args, struct DeltaHeader *header,
         }
 
         if (v1->metaSize.longVal > V1_META_SIZE) {
-                loud("Warning: Meta chunk size is larger than expected (%llu bytes > %d bytes)\n",
+                warn("Warning: Meta chunk size is larger than expected (%llu bytes > %d bytes)\n",
                         v1->metaSize.longVal, V1_META_SIZE);
-                normal(" \\___ Some data may be erroneously skipped\n");
+                info(" \\___ Some data may be erroneously skipped\n");
                 // TODO: Warning as errors
         }
 
@@ -159,7 +159,7 @@ uint64_t readAndVerifyV1(const struct Slurped *args, struct DeltaHeader *header,
                 args->posArg1Len, &v1->sourceHash)) 
         {
                 error("Error while reading delta: Source file's hash (SHA-256) did not equal the hash in the delta file\n");
-                normal(" \\___ If the error persists, this check can be bypassed with --ignore-hash\n");
+                info(" \\___ If the error persists, this check can be bypassed with --ignore-hash\n");
                 return 0;
         }
 
@@ -327,7 +327,7 @@ uint64_t reconstructFromArgs(const struct Slurped *args, uint8_t *outBuf,
                 const uint8_t read = deserializeCommand(cmdBuf, cmdBufSize, i, 
                         &cmd);
                 const uint8_t cmdSize = serialSizeOf(&cmd);
-                normal(" \\___ Deserialized bytes %llu-%llu (%.2f%%)\n", i, 
+                detail(" \\___ Deserialized bytes %llu-%llu (%.2f%%)\n", i, 
                         i + read, 100.0 * (i + read) / cmdBufSize);
                 verbose("   \\___ Command type symbol is '%c'\n", cmd.type);
 
@@ -348,7 +348,7 @@ uint64_t reconstructFromArgs(const struct Slurped *args, uint8_t *outBuf,
                 // Applying the command
                 const uint64_t patched = patchCommand(src->buf, src->size, 
                         outBuf, outSize, &cmd);
-                verbose("   \\___ Patched %llu bytes for type '%c'\n", patched, 
+                detail("   \\___ Patched %llu bytes for type '%c'\n", patched, 
                         cmd.type);
                 if (patched != patchSizeOf(&cmd)) {
                         diagnosePatchError(&cmd, outSize, src->size);
@@ -402,7 +402,7 @@ int32_t reconstructTarget(struct Slurped *args)
         }
         
         // Allocating our destination for reconstruction
-        normal("Patching our commands to an output buffer... (takes a lot of time)\n");
+        info("Patching our commands to an output buffer... (takes a lot of time)\n");
         const uint64_t outSize = header.targetSize.longVal;
         debug("Allocating %llu bytes...\n", outSize);
         uint8_t *outBuf = (uint8_t *) malloc(outSize);
@@ -434,12 +434,12 @@ int32_t reconstructTarget(struct Slurped *args)
         freeBin(delta);
 
         if (tgtSize < outSize) {
-                loud("Warning: The target size stored in the delta file is greater than the actual target size\n");
+                warn("Warning: The target size stored in the delta file is greater than the actual target size\n");
                 // TODO: Warnings as errors
         }
 
         // Writing the serialized output to a file.
-        normal("Writing the patched target buffer to a file...\n");
+        info("Writing the patched target buffer to a file...\n");
         if (fwrite(outBuf, 1, tgtSize, outFile) != tgtSize || ferror(outFile)) {
                 error("Error while writing delta: %s\n", strerror(ferror(outFile)));
                 free(outBuf);
@@ -453,11 +453,11 @@ int32_t reconstructTarget(struct Slurped *args)
         if (!(args->flags & IGNORE_HASH_FLAG) && !hashesEqual(expHash, &nullHash)) {
                 // TODO: When format version control is done, use that for exp hash
                 union Sha256 reconHash;
-                normal("Verifying the hash (SHA-256) of our reconstructed file...\n");
+                info("Verifying the hash (SHA-256) of our reconstructed file...\n");
 
                 if (computeHash(&reconHash, outBuf, tgtSize) == 0) {
                         error("Error while hashing target: The target could not be hashed (reason unknown)\n");
-                        normal(" \\___ If the error persists, this check can be bypassed with --ignore-hash\n");
+                        info(" \\___ If the error persists, this check can be bypassed with --ignore-hash\n");
                         free(outBuf);
                         closeMaybeRemove(outFile, args);
                         return EXIT_FAILURE;
@@ -465,21 +465,18 @@ int32_t reconstructTarget(struct Slurped *args)
         
                 if (!hashesEqual(&reconHash, expHash)) 
                 {
-                        error("Warning: Target file's hash (SHA-256) did not equal the hash in the delta file\n");
-                        normal(" \\___ The file has been preserved, but it may or may not be corrupted\n");
-                        normal(" \\___ This warning can be suppressed using the --ignore-hash flag\n");
-                        free(outBuf);
-                        fclose(outFile); // We DON'T want to delete the file, just in case it's good
-                        return EXIT_FAILURE;
+                        warn("Warning: Target file's hash (SHA-256) did not equal the hash in the delta file\n");
+                        info(" \\___ The file has been preserved, but it may or may not be corrupted\n");
+                        info(" \\___ This warning can be suppressed using the --ignore-hash flag\n");
                 }
         } else if (!(args->flags & IGNORE_HASH_FLAG)) {
-                loud("Warning: The target file's hash stored in the delta file was marked as null\n");
-                normal(" \\___ Verification of the file's hash has been skipped.\n");
+                warn("Warning: The target file's hash stored in the delta file was marked as null\n");
+                detail(" \\___ Verification of the file's hash has been skipped.\n");
                 // TODO: Warnings-as-errors flag
         } 
 
         // Cleaning up
-        normal("Finished outputing the delta\n");
+        info("Finished outputing the delta\n");
         free(outBuf);
         fclose(outFile); // Doesn't really matter if this fails
         return EXIT_SUCCESS;

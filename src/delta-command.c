@@ -28,14 +28,14 @@ uint32_t freeLinked(struct LinkedCommand *head) {
 
 void verboseCmdLog(const struct Command *command) 
 {
-        if (command->type == ADD_COMMAND && (getLogFlags() & VERBOSE_FLAG)) {
+        if (command->type == ADD_COMMAND && (getLogLevel() >= VERBOSE_LVL)) {
                 const char c = (char) (command->cmd.add.symbol);
                 const uint64_t qSet = command->cmd.add.tgtIndex.longVal;
                 verbose("   \\___ Command: ADD '%c' at %llu \n", c, qSet);
                 return ;
         }
 
-        if (command->type == MOVE_COMMAND && (getLogFlags() & VERBOSE_FLAG)) {
+        if (command->type == MOVE_COMMAND && (getLogLevel() >= VERBOSE_LVL)) {
                 const uint64_t pSet = command->cmd.move.srcIndex.longVal;
                 const uint64_t qSet = command->cmd.move.tgtIndex.longVal;
                 const uint64_t l    = command->cmd.move.len.longVal;
@@ -77,7 +77,7 @@ uint64_t computeCmds(const struct FileBin *s, const struct FileBin *t,
         uint64_t outSize = 0;
 
         while (q < t->size) {
-                normal(" \\___ %llu / %llu (%.2f%%)\n", q, t->size, 
+                loud(" \\___ %llu / %llu (%.2f%%)\n", q, t->size, 
                         100.0f * (float) q / (float) t->size);
 
                 // TODO: Start from the last p.
@@ -123,7 +123,7 @@ uint64_t computeCmdsFromArgs(const struct Slurped *args, struct LinkedCommand *h
         }
 
         // Computing the commands
-        normal("Computing ... (takes a lot of time)\n");
+        info("Computing ... (takes a lot of time)\n");
         const uint64_t outSize = computeCmds(s, t, head);
         debugLinked(head);
         freeBin(s);
@@ -147,7 +147,7 @@ int32_t outputHeaderV1(FILE *outFile, const struct DeltaHeader *header)
 
         // Serializing the header
         // WARNING: We assume all the header data is initialized and outBuf is large enough
-        verbose("Serializing v1 header\n");
+        detail("Serializing v1 header\n");
         debug("Serializing the top level data (index = 0)\n");
         uint32_t i = 0;
         memcpy(&outBuf[i], header->magicNumber,  4);
@@ -189,7 +189,7 @@ int32_t outputHeaderV1(FILE *outFile, const struct DeltaHeader *header)
         }
 
         // Writing the serialized buffer to the output file
-        verbose("Writing v1 header to out file\n");
+        detail("Writing v1 header to out file\n");
         const uint32_t written = fwrite(outBuf, 1, outSize, outFile);
         if (written != outSize || ferror(outFile)) {
                 error("Error while writing header: %s\n", strerror(ferror(outFile)));
@@ -235,7 +235,7 @@ uint32_t writeHeader(const struct Slurped *args, FILE *outFile, uint64_t dataSiz
         // Generating a file hash for the target and source
         if (!(args->flags & IGNORE_HASH_FLAG)) {
                 // The target file
-                normal("Computing file hash for the target...\n");
+                info("Computing file hash for the target...\n");
                 if (computeFileHash(&v1->targetHash, tgt) == 0) {
                         verbose("Cancelled header write\n");
                         fclose(tgt);
@@ -250,7 +250,7 @@ uint32_t writeHeader(const struct Slurped *args, FILE *outFile, uint64_t dataSiz
                         return EXIT_FAILURE;
                 }
 
-                normal("Computing file hash for the source...\n");
+                info("Computing file hash for the source...\n");
                 if (computeFileHash(&v1->sourceHash, src) == 0) {
                         verbose("Cancelled header write\n");
                         fclose(src); // Doesn't really matter if this fails
@@ -279,7 +279,7 @@ uint64_t serializeCmds(uint8_t *outBuf, uint64_t bufSize,
 
         while (cur != NULL) {
                 const struct Command *cmd = cur->elem;
-                verbose(" \\___ Serializing command with type '%c' and serial size %d\n",
+                detail(" \\___ Serializing command with type '%c' and serial size %d\n",
                         cmd->type, serialSizeOf(cmd));  
                 debug(" \\___ Index: %llu\n", i);
                 
@@ -333,7 +333,7 @@ int32_t computeDelta(const struct Slurped *args)
         }
 
         // Allocating our destination for serialization
-        normal("Serializing the commands... (this may take a while)\n");
+        info("Serializing the commands... (this may take a while)\n");
         debug("Allocating %llu bytes...\n", outSize);
         uint8_t *outBuf = (uint8_t *) malloc(outSize);
         debug("Allocated.\n");
@@ -357,7 +357,7 @@ int32_t computeDelta(const struct Slurped *args)
         freeLinked(head.next);
 
         // Writing the serialized output to a file.
-        normal("Writing the serialized commands buffer to a file...\n");
+        info("Writing the serialized commands buffer to a file...\n");
         if (fwrite(outBuf, 1, outSize, outFile) != outSize || ferror(outFile)) {
                 error("Error while writing delta: %s\n", strerror(ferror(outFile)));
                 free(outBuf);
@@ -366,7 +366,7 @@ int32_t computeDelta(const struct Slurped *args)
         }
 
         // Cleaning up
-        normal("Finished outputing the delta\n");
+        detail("Finished outputing the delta\n");
         free(outBuf);
         fclose(outFile); // Doesn't really matter if this fails
         return EXIT_SUCCESS;

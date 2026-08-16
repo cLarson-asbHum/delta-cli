@@ -295,8 +295,8 @@ uint64_t computeFileHash(union Sha256 *dest, FILE *file)
 {
         if (dest == NULL || file == NULL) {
                 error("Error while hashing file: The allocated hash destination or the file itself was null\n");
-                normal(" \\__ Hash Destination Address: %p\n", dest);
-                normal(" \\__ File Address: %p\n", file);
+                detail(" \\__ Hash Destination Address: %p\n", dest);
+                detail(" \\__ File Address: %p\n", file);
                 return 0;
         }
 
@@ -343,11 +343,11 @@ uint64_t computeFileHash(union Sha256 *dest, FILE *file)
         const union Sha256 nullHash = NULL_SHA;
         if (hashesEqual(dest, &nullHash)) {
                 error("Garbage state: The produced hash collided with the designated null hash\n");
-                loud(" \\___ Null hash: 0x ");
+                detail(" \\___ Null hash: 0x ");
                 for (uint8_t i = 0; i < 8; i++) {
-                        loud(" %08llx", nullHash.words32[i]);
+                        detail(" %08llx", nullHash.words32[i]);
                 }
-                loud("\n");
+                detail("\n");
                 return 0;
         }
 

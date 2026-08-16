@@ -36,6 +36,9 @@ Flags:
 
     --              Separates options from command arguments
 
+    --detail        Increases the number of messages in standard-output, but less 
+                    than --verbose would.
+
     -h              Prints this help message and exits. Using the --verbose 
                     flag greatly increases the detail of the message.
 
@@ -51,6 +54,9 @@ Flags:
                     --force-destination-delete if both are present.
 
     --quiet         Only displays errors and standard input prompt messages.
+    
+    --reduced       Some standard-output messages are hidden. Warnings, errors, 
+                    prompts, and some other logging is still displayed.
 
     --silent        Suppress all standard output and standard input, including 
                     errors
@@ -59,4 +65,6 @@ Flags:
                     and license. 
 
     --verbose       For --help, increases message length. For delta or reconstruct,
-                    increases amount of info logged to standard output.
+                    greatly increases amount of info logged to standard output.
+
+    --warning       Only displays errors, warnings, and prompt messages.

@@ -2,6 +2,7 @@
 #define SLURP_ARG_H
 
 #include <stdint.h>
+#include "log-level.h"
 
 #define MAX_FILE_PATH_LEN 512
 
@@ -9,15 +10,16 @@
 #define VERSION_FLAG            (1u << (1))
 #define DELTA_FLAG              (1u << (2))
 #define RECONSTRUCT_FLAG        (1u << (3))
-#define VERBOSE_FLAG            (1u << (4))
-#define QUIET_FLAG              (1u << (5))
-#define SILENT_FLAG             (1u << (6))
+#define LOG_MODE_BIT_0          (1u << (4))
+#define LOG_MODE_BIT_1          (1u << (5))
+#define LOG_MODE_BIT_2          (1u << (6))
 #define OUTPUT_FLAG             (1u << (7))
 #define DESTINATION_DELETE_FLAG (1u << (8))
 #define IGNORE_HASH_FLAG        (1u << (9))
 #define GARBAGE_EASTER_EGG_FLAG (1u << (10))
 #define PROMPT_FLAG             (1u << (11))
 #define PRESERVE_FLAG           (1u << (12))
+#define WARNINGS_AS_ERRORS_FLAG (1u << (13))
 #define ERROR_FLAG              (1u << (30))
 
 struct Slurped {
@@ -50,6 +52,10 @@ uint32_t getSlurpIndex(void);
 uint8_t minPosArgs(uint32_t flags);
 
 uint8_t maxPosArgs(uint32_t flags);
+
+uint32_t logLevelToFlags(enum LogLevel lvl);
+
+enum LogLevel flagsToLogLevel(uint32_t flags);
 
 enum SlurpErr slurpArgs(struct Slurped *out, int32_t argc, char **argv);
 

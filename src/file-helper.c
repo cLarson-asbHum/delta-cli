@@ -50,9 +50,9 @@ FILE *attemptRFileOpen(const char *filename, uint16_t maxCount)
         FILE *file = fopen(subName, "rb"); // b to Win means that this is binary
 
         if (file == NULL) {
-                error("Cannot open file \"%s\" for reading\n", subName);
-                normal(" \\___ Check the spelling of the path and the file name \n");
-                normal(" \\___ If the file exists, ensure it's not being used in another program \n");
+                error("Error while opening file: Cannot open file \"%s\" for reading\n", subName);
+                info(" \\___ Check the spelling of the path and the file name \n");
+                info(" \\___ If the file exists, ensure it's not being used in another program \n");
         } else {
                 verbose("Opened file \"%s\" as read-only\n", subName);
         }
@@ -103,12 +103,12 @@ struct FileBin *readBin(char *filename, uint16_t filenameLen)
                 return NULL;
         }
 
-        normal("Reading from \"%s\"... (this may take awhile)\n", filename);
+        info("Reading from \"%s\"... (this may take awhile)\n", filename);
         const uint64_t srcRead = fread((void *) srcBuf, 1, srcSize, src);
         if (srcRead != srcSize) {
                 error("Error while reading from file: Expected to read %llu bytes; read %llu\n", 
                         srcSize, srcRead);
-                normal(" \\___ Reason: %s\n", strerror(errno));
+                loud(" \\___ Reason: %s\n", strerror(errno));
                 free(srcBuf);
                 // TODO: Err code should be set somewhere
                 return NULL;
@@ -147,24 +147,23 @@ void freeBin(struct FileBin *bin) {
 
 // Returns 1 if the existing file should be overridden; 0 otherwise. This 
 // prints messages to stdout (and/or stderr), and gets input from stdin
-// if the prompt flag is set
+// if the prompt flag is set and the log level is --error or greater
 uint8_t overrideExisting(const char* subName, uint32_t flags) 
 {
         const uint32_t force = flags & DESTINATION_DELETE_FLAG;
-        const uint32_t prompt = (flags & PROMPT_FLAG) 
-                && !(flags & SILENT_FLAG);
+        const uint32_t doPrompt = (flags & PROMPT_FLAG) && flags >= ERRORS_LVL;
         
         char userOpinion = 'n';
-        if (prompt) {
+        if (doPrompt) {
                 // Get the user's opinion from stdin
                 // This always occurs with the prompt flag, even if force is set
-                loud("Would you like to override all content in \"%s\"? \n",
+                prompt("Would you like to override all content in \"%s\"? \n",
                         subName);
-                loud("y/n (default is 'n') > ");
+                prompt("y/n (default is 'n') > ");
                 int32_t resp = getchar();
                 debug("Response was 0x%08x \n", resp);
                 if (resp == EOF || ferror(stdin)) {
-                        loud("Warning: user input had an error (defaulting to 'n')\n");
+                        warn("Warning: user input had an error (defaulting to 'n')\n");
                 }
                 
                 if(resp == 'y') {
@@ -172,15 +171,15 @@ uint8_t overrideExisting(const char* subName, uint32_t flags)
                 }
         }
 
-        if (prompt && userOpinion != 'y') {
+        if (doPrompt && userOpinion != 'y') {
                 // User says to NOT delete the file
                 // Respect their opinion (and don't inform them that they can 
                 // override this behavior)
-                normal(" \\___ Cancelled.\n");
+                detail(" \\___ Cancelled.\n");
                 return 0;
         }
 
-        if (!prompt && !force) {
+        if (!doPrompt && !force) {
                 // No flags were set, so take the safest option.
                 // Unlike if the user opinionates 'n', we inform them
                 // that this behavior can be overridden with flags
@@ -189,13 +188,13 @@ uint8_t overrideExisting(const char* subName, uint32_t flags)
                 error("Error while creating file: File \"%s\" already exists\n",
                         subName);
 
-                if (!prompt) {
-                        normal(" \\___ To ask to override the file, use the -p or --prompt command flag\n");
+                if (!doPrompt) {
+                        info(" \\___ To ask to override the file, use the -p or --prompt command flag\n");
                 }
                 return 0;
         }
 
-        if ((!prompt && force) || (prompt && userOpinion == 'y')) {
+        if ((!doPrompt && force) || (doPrompt && userOpinion == 'y')) {
                 // We were only ever told to override the file, so do.
                 return 1u;
         }
@@ -235,7 +234,7 @@ FILE *attemptWFileOpen(char *filename, uint16_t maxCount, uint32_t flags)
         if (overrideExisting(subName, flags)) {
                 // Only told to force delete, so do it
                 file = createWFile(subName);
-                normal(" \\___ Previous contents of the file were overridden\n");
+                info(" \\___ Previous contents of the file were overridden\n");
         } else {
                 file = NULL;
         }
@@ -251,7 +250,7 @@ FILE *attemptWFileOpen(char *filename, uint16_t maxCount, uint32_t flags)
 void closeMaybeRemove(FILE *toClose, const struct Slurped *args)
 {
         if (fclose(toClose) != 0)  {
-                loud("Warning: file could not be closed on error\n");
+                warn("Warning: file could not be closed on error\n");
                 return;
         }
         
