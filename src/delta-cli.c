@@ -41,7 +41,7 @@ int32_t displayHelp(uint32_t hasVerboseFlag)
 
 int32_t displayVersion() 
 {
-        return printf("delta-cli 1.0.0 | Connor Larson, 2026 | MIT license\n");
+        return printf("delta-cli 1.1.0 | Connor Larson, 2026 | MIT license\n");
 }
 
 
