@@ -47,9 +47,9 @@ uint64_t findChunk(const struct FileBin *delta, uint64_t start,
 
                 // Skipping this current chunk if it isn't the meta chunk
                 if(!found) {
-                        loud("Warning: Encountered unexpected chunk \"%s\". It has been skipped\n",
+                        info("Encountered unexpected chunk \"%s\". It has been skipped\n",
                                 curName.str);
-                        normal(" \\___ Was expecting \"%s\"\n", exp.str);
+                        detail(" \\___ Was expecting \"%s\"\n", exp.str);
                         verbose(" \\___ Byte %llu: Skipping %llu bytes\n", start, 
                                 chunkSize->longVal);
                         start += chunkSize->longVal;
@@ -71,6 +71,43 @@ uint64_t findChunk(const struct FileBin *delta, uint64_t start,
         return start;
 }
 
+// Returns 0 on error, 1 on success, and 2 on warning
+uint8_t checkHash(const char *filename, uint16_t filenameLen, 
+        const union Sha256 *expected) 
+{
+        const union Sha256 nullHash = NULL_SHA;
+        if (hashesEqual(expected, &nullHash)) {
+                warn("Warning: The source file's hash stored in the delta file was marked as null\n");
+                info(" \\___ Verification of the file's hash has been skipped.\n");
+                return 2;
+        }
+
+        // Checking the hash
+        FILE *file = attemptRFileOpen(filename, filenameLen);
+        if (file == NULL) {
+                info(" \\___ If the error persists, this check can be bypassed with --ignore-hash\n");
+                verbose("Cancelled file hash\n");
+                return 0;
+        }
+
+        union Sha256 hash;
+        if (computeFileHash(&hash, file) == 0) {
+                info(" \\___ If the error persists, this check can be bypassed with --ignore-hash\n");
+                verbose("Cancelled file hash\n");
+                return 0;
+        }
+
+        if (fclose(file) != 0) {
+                error("Error while hashing file: Could not close file\n");
+                loud(" \\___ Reason: %s\n", strerror(ferror(file)));
+                info(" \\___ If the error persists, this check can be bypassed with --ignore-hash\n");
+                verbose("Cancelled file hash\n");
+                return 0;
+        }
+
+        return hashesEqual(&hash, expected);
+}
+
 // Returns the index at which commands start, i.e. the index after 
 // DeltaHeader.dataSize. If an error occurs, this returns 0; this shouldn't be 
 // misinterpreted as an actual index, as a delta file MUST have at least 
@@ -81,7 +118,7 @@ uint64_t readAndVerifyV1(const struct Slurped *args, struct DeltaHeader *header,
         if (delta->size < V1_DELTA_HEADER_SIZE) {
                 error("Error while reading delta: Delta file's header is too small (size < %d bytes)\n",
                         V1_DELTA_HEADER_SIZE);
-                normal(" \\___ A delta generated with the --preserve flag may be incomplete because of an error\n");
+                info(" \\___ A delta generated with the --preserve flag may be incomplete because of an error\n");
                 return 0;
         }
 
@@ -104,10 +141,10 @@ uint64_t readAndVerifyV1(const struct Slurped *args, struct DeltaHeader *header,
         }
 
         if (v1->metaSize.longVal > V1_META_SIZE) {
-                loud("Warning: Meta chunk size is larger than expected (%llu bytes > %d bytes)\n",
+                warn("Warning: Meta chunk size is larger than expected (%llu bytes > %d bytes)\n",
                         v1->metaSize.longVal, V1_META_SIZE);
-                normal(" \\___ Some data may be erroneously skipped\n");
-                // TODO: Warning as errors
+                info(" \\___ Some data may be erroneously skipped\n");
+                if (warnIsErr(args->flags)) return 0;
         }
 
         const uint64_t metaDataStart = start;
@@ -118,6 +155,21 @@ uint64_t readAndVerifyV1(const struct Slurped *args, struct DeltaHeader *header,
                 v1->targetHash.bytes[i] = delta->buf[start + i + 32];
         }
         start += 64;
+
+        if (!(args->flags & IGNORE_HASH_FLAG)) 
+        {
+                switch (checkHash(args->posArg1, args->posArg1Len, &v1->sourceHash)) {
+                case 2: // Warning
+                        if(warnIsErr(args->flags)) return 0;
+                        break;
+                case 0: // Error:
+                        error("Error while reading delta: Source file's hash (SHA-256) did not equal the hash in the delta file\n");
+                        info(" \\___ If the error persists, this check can be bypassed with --ignore-hash\n");
+                        return 0;
+                default:
+                        // Success!
+                }
+        }
 
         // Skipping cmdLensEqual and the padding bytes
         // We ignore the cmdLensEqual member, as using it would increase the 
@@ -289,8 +341,6 @@ uint64_t reconstructFromArgs(const struct Slurped *args, uint8_t *outBuf,
                 return GARBAGE_PATCH_SIZE;
         }
 
-        // TODO: Check the source's hash
-
         // Deserializing successive commands and applying them
         uint64_t i = 0;
         uint64_t tgtSize = 0;
@@ -301,7 +351,7 @@ uint64_t reconstructFromArgs(const struct Slurped *args, uint8_t *outBuf,
                 const uint8_t read = deserializeCommand(cmdBuf, cmdBufSize, i, 
                         &cmd);
                 const uint8_t cmdSize = serialSizeOf(&cmd);
-                normal(" \\___ Deserialized bytes %llu-%llu (%.2f%%)\n", i, 
+                detail(" \\___ Deserialized bytes %llu-%llu (%.2f%%)\n", i, 
                         i + read, 100.0 * (i + read) / cmdBufSize);
                 verbose("   \\___ Command type symbol is '%c'\n", cmd.type);
 
@@ -321,7 +371,7 @@ uint64_t reconstructFromArgs(const struct Slurped *args, uint8_t *outBuf,
                 // Applying the command
                 const uint64_t patched = patchCommand(src->buf, src->size, 
                         outBuf, outSize, &cmd);
-                verbose("   \\___ Patched %llu bytes for type '%c'\n", patched, 
+                detail("   \\___ Patched %llu bytes for type '%c'\n", patched, 
                         cmd.type);
                 if (patched != patchSizeOf(&cmd)) {
                         diagnosePatchError(&cmd, outSize, src->size);
@@ -376,7 +426,7 @@ int32_t reconstructTarget(struct Slurped *args)
         args->version = header.versionId; // Hack to tell version without new variables
         
         // Allocating our destination for reconstruction
-        normal("Patching our commands to an output buffer... (takes a lot of time)\n");
+        info("Patching our commands to an output buffer... (takes a lot of time)\n");
         const uint64_t outSize = header.targetSize.longVal;
         debug("Allocating %llu bytes...\n", outSize);
         uint8_t *outBuf = (uint8_t *) malloc(outSize);
@@ -408,23 +458,55 @@ int32_t reconstructTarget(struct Slurped *args)
         freeBin(delta);
 
         if (tgtSize < outSize) {
-                loud("Warning: The target size stored in the delta file is greater than the actual target size\n");
-                // TODO: Warnings as errors
+                warn("Warning: The target size stored in the delta file is greater than the actual target size\n");
+        }
+        
+        if (tgtSize < outSize && warnIsErr(args->flags)) {
+                free(outBuf);
+                closeMaybeRemove(outFile, args);
+                return EXIT_FAILURE;
         }
 
         // Writing the serialized output to a file.
-        normal("Writing the patched target buffer to a file...\n");
+        info("Writing the patched target buffer to a file...\n");
         if (fwrite(outBuf, 1, tgtSize, outFile) != tgtSize || ferror(outFile)) {
                 error("Error while writing delta: %s\n", strerror(ferror(outFile)));
                 free(outBuf);
                 closeMaybeRemove(outFile, args);
                 return EXIT_FAILURE; // TODO: Error code
         }
+        
+        // Verifying the hash of the reconstructed file
+        const union Sha256 *expHash = &header.header.v1.targetHash;
+        const union Sha256 nullHash = NULL_SHA;
+        if (!(args->flags & IGNORE_HASH_FLAG) && !hashesEqual(expHash, &nullHash)) {
+                // TODO: When format version control is done, use that for exp hash
+                union Sha256 reconHash;
+                info("Verifying the hash (SHA-256) of our reconstructed file...\n");
 
-        // TODO: Verify hash of the reconstructed file.
+                if (computeHash(&reconHash, outBuf, tgtSize) == 0) {
+                        error("Error while hashing target: The target could not be hashed (reason unknown)\n");
+                        info(" \\___ If the error persists, this check can be bypassed with --ignore-hash\n");
+                        free(outBuf);
+                        closeMaybeRemove(outFile, args);
+                        return EXIT_FAILURE;
+                }
+        
+                if (!hashesEqual(&reconHash, expHash)) 
+                {
+                        warn("Warning: Target file's hash (SHA-256) did not equal the hash in the delta file\n");
+                        info(" \\___ The file has been preserved, but it may or may not be corrupted\n");
+                        info(" \\___ This warning can be suppressed using the --ignore-hash flag\n");
+                        // Don't need to check warnIsErr because we're already ending the program
+                }
+        } else if (!(args->flags & IGNORE_HASH_FLAG)) {
+                warn("Warning: The target file's hash stored in the delta file was marked as null\n");
+                detail(" \\___ Verification of the file's hash has been skipped.\n");
+                // Don't need to check warnIsErr because we're already ending the program
+        } 
 
         // Cleaning up
-        normal("Finished outputing the delta\n");
+        info("Finished outputing the delta\n");
         free(outBuf);
         fclose(outFile); // Doesn't really matter if this fails
         return EXIT_SUCCESS;

@@ -1,4 +1,4 @@
-delta-cli 1.0.0 | Connor Larson, 2026 | MIT license
+delta-cli 1.1.0 | Connor Larson, 2026 | MIT license
 ---------------------------------------------------
 
 Basic Syntax:
@@ -62,6 +62,9 @@ Flags:
 
     -?              Same as -h
 
+    -d --detail     Increases the number of messages in standard-output, but less 
+                    than --verbose would.
+
     --error         Same as --quiet (see below)
 
     --file-version=<1|2>  
@@ -106,19 +109,27 @@ Flags:
                     output. This flag takes precedent over 
                     --force-destination-delete if both are present.
 
-    --quiet         Only displays errors and standard input prompt messages.
+    -q --quiet      Only displays errors and standard input prompt messages.
+
+    -r --reduced    Some standard-output messages are hidden. Warnings, errors, 
+                    prompts, and some other logging is still displayed.
 
     --silent        Suppress all standard output and standard input, including 
                     errors. If both this flag and --prompt (or -p) are present,
                     all --prompt behavior is ignored; it is as though --prompt
                     was never passed.
 
+    -s --strict     Treats warnings as errors, ending the program if one occurs.
+                    Warnings will also be displayed in --quiet mode.
+
     -v --version -version
                     Displays the program name (delta-cli), version, author, date,
                     and license. 
 
     --verbose       For --help, increases message length. For delta or reconstruct,
-                    increases amount of info logged to standard output.
+                    greatly increases amount of info logged to standard output.
+
+    -w --warning    Only displays errors, warnings, and prompt messages.
 
 Troubleshooting:
 

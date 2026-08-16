@@ -6,6 +6,7 @@
 #include "delta-command.h"
 #include "delta.h"
 #include "file-helper.h"
+#include "hash.h"
 
 #define V1_COMPAT_OFFSET 0
 
@@ -29,21 +30,21 @@ uint32_t freeLinked(struct LinkedCommand *head) {
 
 void verboseCmdLog(const struct Command *command) 
 {
-        if (command->type == ADD_COMMAND && (getLogFlags() & VERBOSE_FLAG)) {
+        if (command->type == ADD_COMMAND && (getLogLevel() >= VERBOSE_LVL)) {
                 const char c = (char) (command->cmd.add.symbol);
                 const uint64_t qSet = command->cmd.add.tgtIndex.longVal;
                 verbose("   \\___ Command: ADD '%c' at %llu \n", c, qSet);
                 return ;
         }
 
-        if (command->type == ADD_64_COMMAND && (getLogFlags() & VERBOSE_FLAG)) {
+        if (command->type == ADD_64_COMMAND && (getLogLevel() >= VERBOSE_LVL)) {
                 const uint64_t c = (uint64_t) (command->cmd.add64.symbol64);
                 const uint64_t qSet = command->cmd.add.tgtIndex.longVal;
                 verbose("   \\___ Command: ADD_64 0x%016llx at %llu \n", c, qSet);
                 return ;
         }
 
-        if (command->type == MOVE_COMMAND && (getLogFlags() & VERBOSE_FLAG)) {
+        if (command->type == MOVE_COMMAND && (getLogLevel() >= VERBOSE_LVL)) {
                 const uint64_t pSet = command->cmd.move.srcIndex.longVal;
                 const uint64_t qSet = command->cmd.move.tgtIndex.longVal;
                 const uint64_t l    = command->cmd.move.len.longVal;
@@ -89,7 +90,7 @@ uint64_t computeCmds(const struct FileBin *s, const struct FileBin *t,
         uint64_t outSize = 0;
 
         while (q < t->size) {
-                normal(" \\___ %llu / %llu (%.2f%%)\n", q, t->size, 
+                loud(" \\___ %llu / %llu (%.2f%%)\n", q, t->size, 
                         100.0f * (float) q / (float) t->size);
 
                 // WARNING: We assume that command is never NULL, which assumes
@@ -141,7 +142,7 @@ uint64_t computeCmds64(const struct FileBin *s, const struct FileBin *t,
         uint64_t outSize = 0;
 
         while (q + 7 < t->size && s64Size != 0) {
-                normal(" \\___ %llu / %llu (%.2f%%)\n", q, t->size, 
+                info(" \\___ %llu / %llu (%.2f%%)\n", q, t->size, 
                         100.0f * (float) q / (float) t->size);
 
                 // WARNING: We assume that command is never NULL, which assumes
@@ -217,7 +218,7 @@ uint64_t computeCmdsFromArgs(const struct Slurped *args, struct LinkedCommand *h
         }
 
 
-        normal("Computing ... (takes a lot of time)\n");
+        info("Computing ... (takes a lot of time)\n");
         uint64_t outSize = 0;
         switch (version) {
         case 1: 
@@ -254,12 +255,38 @@ int32_t hydrateHeaderV1(const struct Slurped *args, struct Version1Header *v1)
         // padding is always serialized as 0xff in outputHeaderV1
 
         // Generating file hashes
-        // FIXME: We don't currently support file hashing here, so we default to ignore
-        debug("Ignore hash flag: %08x\n", args->flags & IGNORE_HASH_FLAG);
-        if (1 || (args->flags & IGNORE_HASH_FLAG)) {
-                loud("Warning: Ignoring hash generation for source and target files\n");
-                normal(" \\___ The reconstructed target could possibly be silently corrupted as a result\n");
-                // TODO: Warnings-as-errors flag
+        // Generating a file hash for the target and source
+        if (!(args->flags & IGNORE_HASH_FLAG)) {
+                // The target file
+                FILE *tgt = attemptRFileOpen(args->posArg2, args->posArg2Len);
+                if (tgt == NULL) {
+                        verbose("Cancelled header write\n");
+                        return EXIT_FAILURE;
+                }
+
+                info("Computing file hash for the target...\n");
+                if (computeFileHash(&v1->targetHash, tgt) == 0) {
+                        verbose("Cancelled header write\n");
+                        fclose(tgt);
+                        return EXIT_FAILURE;
+                }
+                fclose(tgt); // Doesn't really matter if this fails
+
+                // The source file
+                FILE *src = attemptRFileOpen(args->posArg1, args->posArg1Len);
+                if (src == NULL) {
+                        verbose("Cancelled header write\n");
+                        fclose(tgt); // Doesn't matter if it fails
+                        return EXIT_FAILURE;
+                }
+
+                info("Computing file hash for the source...\n");
+                if (computeFileHash(&v1->sourceHash, src) == 0) {
+                        verbose("Cancelled header write\n");
+                        fclose(src); // Doesn't really matter if this fails
+                        return EXIT_FAILURE;
+                }
+                fclose(src); // Doesn't really matter if this fails
         }
 
         return EXIT_SUCCESS;
@@ -286,7 +313,7 @@ int32_t hydrateHeaderV2(const struct Slurped *args, struct Version2Header *v2,
         debug("Ignore hash flag: %08x\n", args->flags & IGNORE_HASH_FLAG);
         if (1 || (args->flags & IGNORE_HASH_FLAG)) {
                 loud("Warning: Ignoring hash generation for source and target files\n");
-                normal(" \\___ The reconstructed target could possibly be silently corrupted as a result\n");
+                info(" \\___ The reconstructed target could possibly be silently corrupted as a result\n");
                 // TODO: Warnings-as-errors flag
         }
 
@@ -325,7 +352,7 @@ int32_t outputHeaderV1(FILE *outFile, const struct DeltaHeader *header)
 
         // Serializing the header
         // WARNING: We assume all the header data is initialized and outBuf is large enough
-        verbose("Serializing v1 header\n");
+        detail("Serializing v1 header\n");
         debug("Serializing the top level data (index = 0)\n");
         uint32_t i = 0;
         memcpy(&outBuf[i], header->magicNumber,  4);
@@ -367,7 +394,7 @@ int32_t outputHeaderV1(FILE *outFile, const struct DeltaHeader *header)
         }
 
         // Writing the serialized buffer to the output file
-        verbose("Writing v1 header to out file\n");
+        detail("Writing v1 header to out file\n");
         const uint32_t written = fwrite(outBuf, 1, outSize, outFile);
         if (written != outSize || ferror(outFile)) {
                 error("Error while writing header: %s\n", strerror(ferror(outFile)));
@@ -490,7 +517,6 @@ int32_t writeHeader(const struct Slurped *args, FILE *outFile, uint64_t dataSize
         }
 
         header.targetSize.longVal = fileLength(tgt);
-
         verbose("Target Size: %llu bytes\n", header.targetSize.longVal);
         verbose("Closing the aforementioned read-only target file\n");
         if (fclose(tgt) != 0) {
@@ -518,7 +544,7 @@ uint64_t serializeCmds(uint8_t *outBuf, uint64_t bufSize,
 
         while (cur != NULL) {
                 const struct Command *cmd = cur->elem;
-                verbose(" \\___ Serializing command with type '%c' and serial size %d\n",
+                detail(" \\___ Serializing command with type '%c' and serial size %d\n",
                         cmd->type, serialSizeOf(cmd));  
                 debug(" \\___ Index: %llu\n", i);
                 
@@ -594,7 +620,7 @@ int32_t computeDelta(const struct Slurped *args)
         }
 
         // Allocating our destination for serialization
-        normal("Serializing the commands... (this may take a while)\n");
+        info("Serializing the commands... (this may take a while)\n");
         debug("Allocating %llu bytes...\n", outSize);
         uint8_t *outBuf = (uint8_t *) malloc(outSize);
         debug("Allocated.\n");
@@ -618,7 +644,7 @@ int32_t computeDelta(const struct Slurped *args)
         freeLinked(head.next);
 
         // Writing the serialized output to a file.
-        normal("Writing the serialized commands buffer to a file...\n");
+        info("Writing the serialized commands buffer to a file...\n");
         if (fwrite(outBuf, 1, outSize, outFile) != outSize || ferror(outFile)) {
                 error("Error while writing delta: %s\n", strerror(ferror(outFile)));
                 free(outBuf);
@@ -627,7 +653,7 @@ int32_t computeDelta(const struct Slurped *args)
         }
 
         // Cleaning up
-        normal("Finished outputing the delta\n");
+        detail("Finished outputing the delta\n");
         free(outBuf);
         fclose(outFile); // Doesn't really matter if this fails
         return EXIT_SUCCESS;

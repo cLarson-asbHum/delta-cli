@@ -61,6 +61,27 @@ uint8_t maxPosArgs(uint32_t flags)
         return 0;
 }
 
+uint32_t logLevelToFlags(enum LogLevel lvl) 
+{
+        // It is guaranteed that the level fits in 3 bits
+        const uint8_t l8 = (uint8_t) lvl;
+        uint32_t flags = 0;
+        flags |= LOG_MODE_BIT_0 & (~((l8 & (1 << 0)) >> 0) + 1);
+        flags |= LOG_MODE_BIT_1 & (~((l8 & (1 << 1)) >> 1) + 1);
+        flags |= LOG_MODE_BIT_2 & (~((l8 & (1 << 2)) >> 2) + 1);
+        return flags;
+}
+
+enum LogLevel flagsToLogLevel(uint32_t flags) 
+{
+        // It is guaranteed that the level fits in 3 bits
+        enum LogLevel lvl = 0;
+        lvl |= (flags & LOG_MODE_BIT_0) != 0 ? 1 << 0 : 0;
+        lvl |= (flags & LOG_MODE_BIT_1) != 0 ? 1 << 1 : 0;
+        lvl |= (flags & LOG_MODE_BIT_2) != 0 ? 1 << 2 : 0;
+        return lvl;
+}
+
 enum SlurpErr getPosArgs(struct Slurped *out, uint8_t argc, char **argv, 
         uint32_t i) 
 {
@@ -188,6 +209,45 @@ enum SlurpErr checkCmd(struct Slurped *out, const char *arg)
         return checkHelpOrVers(out, arg);
 }
 
+enum SlurpErr optionIsLogLevel(struct Slurped *out, const char *arg) 
+{
+        if (streq(arg, "--verbose", 10)) {
+                out->flags = (out->flags | logLevelToFlags(VERBOSE_LVL));
+                return SLURP_SUCCESS;
+        }
+        
+        if (streq(arg, "--detail", 9) || streq(arg, "-d", 3)) {
+                out->flags = (out->flags | logLevelToFlags(DETAIL_LVL));
+                return SLURP_SUCCESS;
+        }
+
+        if (streq(arg, "--reduced", 10) || streq(arg, "-r", 3)) {
+                out->flags = (out->flags | logLevelToFlags(REDUCED_LVL));
+                return SLURP_SUCCESS;
+        }
+
+        if (streq(arg, "--warning", 10) || streq(arg, "-w", 3)) {
+                out->flags = (out->flags | logLevelToFlags(WARNINGS_LVL));
+                return SLURP_SUCCESS;
+        }
+
+        if ((streq(arg, "--quiet", 8) || streq(arg, "--error", 8)) 
+                || streq(arg, "-q", 3)) 
+        {
+                // If --strict or -s was passed, log warnings as errors
+                out->flags |= logLevelToFlags(warnIsErr(out->flags) ? ERRORS_LVL 
+                        : WARNINGS_LVL);
+                return SLURP_SUCCESS;
+        }
+
+        if (streq(arg, "--silent", 9)) {
+                out->flags = (out->flags | logLevelToFlags(SILENT_LVL));
+                return SLURP_SUCCESS;
+        }
+
+        return CONTINUE;
+}
+
 enum SlurpErr checkOpt(struct Slurped *out, int32_t argc, char **argv) 
 {
         const uint32_t i = slurpIndex;
@@ -205,25 +265,11 @@ enum SlurpErr checkOpt(struct Slurped *out, int32_t argc, char **argv)
                 return FORCE_BREAK;
         }
 
-        if (streq(arg, "--verbose", 10)) {
-                // Override silent and quiet, which conflict with verbose
-                out->flags = (out->flags & ~(QUIET_FLAG | SILENT_FLAG));
-                out->flags = (out->flags | VERBOSE_FLAG);
-                return SLURP_SUCCESS;
-        }
-
-        if (streq(arg, "--quiet", 8) || streq(arg, "--error", 8)) {
-                // Override silent and verbose, which conflict with quiet
-                out->flags = (out->flags & ~(VERBOSE_FLAG | SILENT_FLAG));
-                out->flags = (out->flags | QUIET_FLAG);
-                return SLURP_SUCCESS;
-        }
-
-        if (streq(arg, "--silent", 9)) {
-                // Override verbose and quiet, which conflict with silent
-                out->flags = (out->flags & ~(QUIET_FLAG | VERBOSE_FLAG));
-                out->flags = (out->flags | SILENT_FLAG);
-                return SLURP_SUCCESS;
+        const enum SlurpErr logLevelRet = optionIsLogLevel(out, arg);
+        if (logLevelRet != CONTINUE) {
+                // The corresponding flag(s) for the log level would have been
+                // set by optionsIsLogLevel()
+                return logLevelRet;
         }
         
         if (streq(arg, "-p", 3) || streq(arg, "--prompt", 9)) {
@@ -272,6 +318,11 @@ enum SlurpErr checkOpt(struct Slurped *out, int32_t argc, char **argv)
 
         if (streq(arg, "--preserve", 11)) {
                 out->flags = (out->flags | PRESERVE_FLAG);
+                return SLURP_SUCCESS;
+        }
+
+        if (streq(arg, "-s", 3) || streq(arg, "--strict", 9)) {
+                out->flags |= WARNINGS_AS_ERRORS_FLAG;
                 return SLURP_SUCCESS;
         }
         
@@ -333,7 +384,7 @@ enum SlurpErr handleArg(struct Slurped *out, int32_t argc, char **argv)
 
 enum SlurpErr slurpArgs(struct Slurped *out, int32_t argc, char **argv) 
 {
-        out->flags = 0;
+        out->flags = 0 | logLevelToFlags(INFO_LVL);
         out->outputLen = 0;
         out->posArg1Len = 0;
         out->posArg2Len = 0;
@@ -410,13 +461,13 @@ enum SlurpErr displayErr(uint32_t flags, char **argv, enum SlurpErr err,
                 error("\"%s\" is not a valid command\n", argv[i]);
                 
                 if (flags & GARBAGE_EASTER_EGG_FLAG) {
-                        normal(" \\___ Very funny... At least you read the docs, i guess?\n");
+                        loud(" \\___ Very funny... At least you read the docs, i guess?\n");
                 }
                 break;
 
         case UNKNOWN_FLAG_OR_ARG: 
                 error("\"%s\" is not a valid flag or argument\n", argv[i]);
-                normal(" \\___ If a file starts with '-', try adding the '--' flag before it");
+                info(" \\___ If a file starts with '-', try adding the '--' flag before it");
                 break;
 
         case ZERO_LENGTH_OUTPUT_PATH: 
@@ -425,16 +476,16 @@ enum SlurpErr displayErr(uint32_t flags, char **argv, enum SlurpErr err,
 
         case MISSING_POS_ARG: 
                 error("Missing positional argument (e.g. src.txt or target.delta)\n");
-                normal(" \\___ If one starts with '-', try adding the '--' flag before it");
+                info(" \\___ If one starts with '-', try adding the '--' flag before it");
                 break;
 
         case TOO_MANY_POS_ARGS:
                 error("Too many positional arguments (expected only %d args)\n",
                         maxPosArgs(flags));
-                normal(" \\___ Check that all optional arguments have a flag before them\n");
-                verbose("   \\___ e.g. \"--option path/file.ex\" rather than just \"path/file.ex\"\n");
-                normal(" \\___ Verify that all options have '-' or '--' before them\n");
-                verbose("   \\__ e.g. \"--prompt\" or \"-p\", rather than just \"prompt\"\n");
+                info(" \\___ Check that all optional arguments have a flag before them\n");
+                detail("   \\___ e.g. \"--option path/file.ex\" rather than just \"path/file.ex\"\n");
+                info(" \\___ Verify that all options are prefixed with '-' or '--'\n");
+                detail("   \\__ e.g. \"--prompt\" or \"-p\", rather than just \"prompt\"\n");
                 break;
 
         case MALFORMED_FILE_VERSION:
@@ -457,4 +508,10 @@ enum SlurpErr displayErr(uint32_t flags, char **argv, enum SlurpErr err,
         }
 
         return err;
+}
+
+// Returns 1 if the --strict flag is set; 0 otherwise
+uint32_t warnIsErr(uint32_t flags) 
+{
+        return flags & WARNINGS_AS_ERRORS_FLAG;
 }

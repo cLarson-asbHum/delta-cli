@@ -2,6 +2,7 @@
 #define SLURP_ARG_H
 
 #include <stdint.h>
+#include "log-level.h"
 
 #define MAX_FILE_PATH_LEN 512
 
@@ -9,16 +10,17 @@
 #define SHOW_VERSION_FLAG       (1u << (1))
 #define DELTA_FLAG              (1u << (2))
 #define RECONSTRUCT_FLAG        (1u << (3))
-#define VERBOSE_FLAG            (1u << (4))
-#define QUIET_FLAG              (1u << (5))
-#define SILENT_FLAG             (1u << (6))
+#define LOG_MODE_BIT_0          (1u << (4))
+#define LOG_MODE_BIT_1          (1u << (5))
+#define LOG_MODE_BIT_2          (1u << (6))
 #define OUTPUT_FLAG             (1u << (7))
 #define DESTINATION_DELETE_FLAG (1u << (8))
 #define IGNORE_HASH_FLAG        (1u << (9))
 #define GARBAGE_EASTER_EGG_FLAG (1u << (10))
 #define PROMPT_FLAG             (1u << (11))
 #define PRESERVE_FLAG           (1u << (12))
-#define FILE_VERSION_FLAG       (1u << (13))
+#define WARNINGS_AS_ERRORS_FLAG (1u << (13))
+#define FILE_VERSION_FLAG       (1u << (14))
 #define ERROR_FLAG              (1u << (30))
 
 struct Slurped {
@@ -55,11 +57,18 @@ uint8_t minPosArgs(uint32_t flags);
 
 uint8_t maxPosArgs(uint32_t flags);
 
+uint32_t logLevelToFlags(enum LogLevel lvl);
+
+enum LogLevel flagsToLogLevel(uint32_t flags);
+
 enum SlurpErr slurpArgs(struct Slurped *out, int32_t argc, char **argv);
 
 // Displays a message for the slurpErr variable. Returns SLURP_SUCCESS if there 
 // was no error to begin with
 enum SlurpErr displayErr(uint32_t flags, char **argv, enum SlurpErr err, 
         uint32_t i);
+
+// Returns 0 if the --strict flag (or equivalent) is not set; non-zero otherwise
+uint32_t warnIsErr(uint32_t flags);
 
 #endif
