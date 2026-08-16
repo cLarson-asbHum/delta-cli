@@ -34,37 +34,38 @@ Commands:
 
 Flags:
 
-    --              Separates options from command arguments
+    --      Separates options from command arguments
 
-    --detail        Increases the number of messages in standard-output, but less 
-                    than --verbose would.
+    -d      Increases the number of messages in standard-output, but less 
+            than --verbose would.
 
-    -h              Prints this help message and exits. Using the --verbose 
-                    flag greatly increases the detail of the message.
+    -h      Prints this help message and exits. Using the --verbose 
+            flag greatly increases the detail of the message.
 
     -o <outputFilePath>
-                    The file to write deltas and reconstructed targets to.
-                    By default, a file that conflicts with the output will cause
-                    the program to exit with an error, unless either the
-                    --prompt, -p, or --force-destination-delete flag is present.
+            The file to write deltas and reconstructed targets to.
+            By default, a file that conflicts with the output will cause
+            the program to exit with an error, unless either the
+            --prompt, -p, or --force-destination-delete flag is present.
 
-    -p              Prompts before allowing the output of delta or reconstruct to 
-                    delete a conflicting file which has the same name as the 
-                    output. This flag takes precedent over 
-                    --force-destination-delete if both are present.
+    -p      Prompts before allowing the output of delta or reconstruct to 
+            delete a conflicting file which has the same name as the 
+            output. This flag takes precedent over 
+            --force-destination-delete if both are present.
 
-    --quiet         Only displays errors and standard input prompt messages.
+    -q      Only displays errors and standard input prompt messages.
     
-    --reduced       Some standard-output messages are hidden. Warnings, errors, 
-                    prompts, and some other logging is still displayed.
+    -r      Some standard-output messages are hidden. Warnings, errors, 
+            prompts, and some other logging is still displayed.
 
-    --silent        Suppress all standard output and standard input, including 
-                    errors
+    -s      Suppress all standard output and standard input, including 
+            errors
 
-    -v              Displays the program name (delta-cli), version, author, date,
+    -v      Displays the program name (delta-cli), version, author, date,
                     and license. 
 
-    --verbose       For --help, increases message length. For delta or reconstruct,
-                    greatly increases amount of info logged to standard output.
+    --verbose       
+            For --help, increases message length. For delta or reconstruct,
+            greatly increases amount of info logged to standard output.
 
-    --warning       Only displays errors, warnings, and prompt messages.
+    -w      Only displays errors, warnings, and prompt messages.

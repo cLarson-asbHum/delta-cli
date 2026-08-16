@@ -3,7 +3,7 @@
 
 // Whether to show debug(...) printf messages. Does not affect LogLevels 
 // provided by flag
-#define DEBUG 1
+#define DEBUG 0
 
 #include <stdint.h>
 

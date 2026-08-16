@@ -164,6 +164,7 @@ uint8_t overrideExisting(const char* subName, uint32_t flags)
                 debug("Response was 0x%08x \n", resp);
                 if (resp == EOF || ferror(stdin)) {
                         warn("Warning: user input had an error (defaulting to 'n')\n");
+                        if (warnIsErr(flags)) return 0;
                 }
                 
                 if(resp == 'y') {
@@ -251,6 +252,7 @@ void closeMaybeRemove(FILE *toClose, const struct Slurped *args)
 {
         if (fclose(toClose) != 0)  {
                 warn("Warning: file could not be closed on error\n");
+                // Don't check for warnIsErr, because we're already ending the program.
                 return;
         }
         

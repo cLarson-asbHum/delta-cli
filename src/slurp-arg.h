@@ -64,4 +64,7 @@ enum SlurpErr slurpArgs(struct Slurped *out, int32_t argc, char **argv);
 enum SlurpErr displayErr(uint32_t flags, char **argv, enum SlurpErr err, 
         uint32_t i);
 
+// Returns 0 if the --strict flag (or equivalent) is not set; non-zero otherwise
+uint32_t warnIsErr(uint32_t flags);
+
 #endif

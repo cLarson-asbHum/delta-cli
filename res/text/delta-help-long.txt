@@ -62,7 +62,7 @@ Flags:
 
     -?              Same as -h
 
-    --detail        Increases the number of messages in standard-output, but less 
+    -d --detail     Increases the number of messages in standard-output, but less 
                     than --verbose would.
 
     --error         Same as --quiet (see below)
@@ -97,15 +97,18 @@ Flags:
                     output. This flag takes precedent over 
                     --force-destination-delete if both are present.
 
-    --quiet         Only displays errors and standard input prompt messages.
+    -q --quiet      Only displays errors and standard input prompt messages.
 
-    --reduced       Some standard-output messages are hidden. Warnings, errors, 
+    -r --reduced    Some standard-output messages are hidden. Warnings, errors, 
                     prompts, and some other logging is still displayed.
 
     --silent        Suppress all standard output and standard input, including 
                     errors. If both this flag and --prompt (or -p) are present,
                     all --prompt behavior is ignored; it is as though --prompt
                     was never passed.
+
+    -s --strict     Treats warnings as errors, ending the program if one occurs.
+                    Warnings will also be displayed in --quiet mode.
 
     -v --version -version
                     Displays the program name (delta-cli), version, author, date,
@@ -114,7 +117,7 @@ Flags:
     --verbose       For --help, increases message length. For delta or reconstruct,
                     greatly increases amount of info logged to standard output.
 
-    --warning       Only displays errors, warnings, and prompt messages.
+    -w --warning    Only displays errors, warnings, and prompt messages.
 
 Troubleshooting:
 

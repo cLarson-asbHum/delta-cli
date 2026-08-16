@@ -207,6 +207,45 @@ enum SlurpErr checkCmd(struct Slurped *out, const char *arg)
         return checkHelpOrVers(out, arg);
 }
 
+enum SlurpErr optionIsLogLevel(struct Slurped *out, const char *arg) 
+{
+        if (streq(arg, "--verbose", 10)) {
+                out->flags = (out->flags | logLevelToFlags(VERBOSE_LVL));
+                return SLURP_SUCCESS;
+        }
+        
+        if (streq(arg, "--detail", 9) || streq(arg, "-d", 3)) {
+                out->flags = (out->flags | logLevelToFlags(DETAIL_LVL));
+                return SLURP_SUCCESS;
+        }
+
+        if (streq(arg, "--reduced", 10) || streq(arg, "-r", 3)) {
+                out->flags = (out->flags | logLevelToFlags(REDUCED_LVL));
+                return SLURP_SUCCESS;
+        }
+
+        if (streq(arg, "--warning", 10) || streq(arg, "-w", 3)) {
+                out->flags = (out->flags | logLevelToFlags(WARNINGS_LVL));
+                return SLURP_SUCCESS;
+        }
+
+        if ((streq(arg, "--quiet", 8) || streq(arg, "--error", 8)) 
+                || streq(arg, "-q", 3)) 
+        {
+                // If --strict or -s was passed, log warnings as errors
+                out->flags |= logLevelToFlags(warnIsErr(out->flags) ? ERRORS_LVL 
+                        : WARNINGS_LVL);
+                return SLURP_SUCCESS;
+        }
+
+        if (streq(arg, "--silent", 9)) {
+                out->flags = (out->flags | logLevelToFlags(SILENT_LVL));
+                return SLURP_SUCCESS;
+        }
+
+        return CONTINUE;
+}
+
 enum SlurpErr checkOpt(struct Slurped *out, int32_t argc, char **argv) 
 {
         const uint32_t i = slurpIndex;
@@ -224,34 +263,11 @@ enum SlurpErr checkOpt(struct Slurped *out, int32_t argc, char **argv)
                 return FORCE_BREAK;
         }
 
-        if (streq(arg, "--verbose", 10)) {
-                out->flags = (out->flags | logLevelToFlags(VERBOSE_LVL));
-                return SLURP_SUCCESS;
-        }
-        
-        if (streq(arg, "--detail", 9)) {
-                out->flags = (out->flags | logLevelToFlags(DETAIL_LVL));
-                return SLURP_SUCCESS;
-        }
-
-        if (streq(arg, "--reduced", 10)) {
-                out->flags = (out->flags | logLevelToFlags(REDUCED_LVL));
-                return SLURP_SUCCESS;
-        }
-
-        if (streq(arg, "--warning", 10)) {
-                out->flags = (out->flags | logLevelToFlags(WARNINGS_LVL));
-                return SLURP_SUCCESS;
-        }
-
-        if ((streq(arg, "--quiet", 8) || streq(arg, "--error", 8))) {                
-                out->flags = (out->flags | logLevelToFlags(ERRORS_LVL));
-                return SLURP_SUCCESS;
-        }
-
-        if (streq(arg, "--silent", 9)) {
-                out->flags = (out->flags | logLevelToFlags(SILENT_LVL));
-                return SLURP_SUCCESS;
+        const enum SlurpErr logLevelRet = optionIsLogLevel(out, arg);
+        if (logLevelRet != CONTINUE) {
+                // The corresponding flag(s) for the log level would have been
+                // set by optionsIsLogLevel()
+                return logLevelRet;
         }
 
         if ((streq(arg, "-p", 3) || streq(arg, "--prompt", 9))) {
@@ -300,6 +316,11 @@ enum SlurpErr checkOpt(struct Slurped *out, int32_t argc, char **argv)
 
         if (streq(arg, "--preserve", 11)) {
                 out->flags = (out->flags | PRESERVE_FLAG);
+                return SLURP_SUCCESS;
+        }
+
+        if (streq(arg, "-s", 3) || streq(arg, "--strict", 9)) {
+                out->flags |= WARNINGS_AS_ERRORS_FLAG;
                 return SLURP_SUCCESS;
         }
 
@@ -457,4 +478,10 @@ enum SlurpErr displayErr(uint32_t flags, char **argv, enum SlurpErr err,
         }
 
         return err;
+}
+
+// Returns 1 if the --strict flag is set; 0 otherwise
+uint32_t warnIsErr(uint32_t flags) 
+{
+        return flags & WARNINGS_AS_ERRORS_FLAG;
 }

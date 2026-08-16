@@ -47,7 +47,7 @@ uint64_t findChunk(const struct FileBin *delta, uint64_t start,
 
                 // Skipping this current chunk if it isn't the meta chunk
                 if(!found) {
-                        warn("Warning: Encountered unexpected chunk \"%s\". It has been skipped\n",
+                        info("Encountered unexpected chunk \"%s\". It has been skipped\n",
                                 curName.str);
                         detail(" \\___ Was expecting \"%s\"\n", exp.str);
                         verbose(" \\___ Byte %llu: Skipping %llu bytes\n", start, 
@@ -71,6 +71,7 @@ uint64_t findChunk(const struct FileBin *delta, uint64_t start,
         return start;
 }
 
+// Returns 0 on error, 1 on success, and 2 on warning
 uint8_t checkHash(const char *filename, uint16_t filenameLen, 
         const union Sha256 *expected) 
 {
@@ -78,7 +79,7 @@ uint8_t checkHash(const char *filename, uint16_t filenameLen,
         if (hashesEqual(expected, &nullHash)) {
                 warn("Warning: The source file's hash stored in the delta file was marked as null\n");
                 info(" \\___ Verification of the file's hash has been skipped.\n");
-                return 1;
+                return 2;
         }
 
         // Checking the hash
@@ -143,7 +144,7 @@ uint64_t readAndVerifyV1(const struct Slurped *args, struct DeltaHeader *header,
                 warn("Warning: Meta chunk size is larger than expected (%llu bytes > %d bytes)\n",
                         v1->metaSize.longVal, V1_META_SIZE);
                 info(" \\___ Some data may be erroneously skipped\n");
-                // TODO: Warning as errors
+                if (warnIsErr(args->flags)) return 0;
         }
 
         const uint64_t metaDataStart = start;
@@ -155,12 +156,19 @@ uint64_t readAndVerifyV1(const struct Slurped *args, struct DeltaHeader *header,
         }
         start += 64;
 
-        if (!(args->flags & IGNORE_HASH_FLAG) && !checkHash(args->posArg1, 
-                args->posArg1Len, &v1->sourceHash)) 
+        if (!(args->flags & IGNORE_HASH_FLAG)) 
         {
-                error("Error while reading delta: Source file's hash (SHA-256) did not equal the hash in the delta file\n");
-                info(" \\___ If the error persists, this check can be bypassed with --ignore-hash\n");
-                return 0;
+                switch (checkHash(args->posArg1, args->posArg1Len, &v1->sourceHash)) {
+                case 2: // Warning
+                        if(warnIsErr(args->flags)) return 0;
+                        break;
+                case 0: // Error:
+                        error("Error while reading delta: Source file's hash (SHA-256) did not equal the hash in the delta file\n");
+                        info(" \\___ If the error persists, this check can be bypassed with --ignore-hash\n");
+                        return 0;
+                default:
+                        // Success!
+                }
         }
 
         // Skipping cmdLensEqual and the padding bytes
@@ -435,7 +443,12 @@ int32_t reconstructTarget(struct Slurped *args)
 
         if (tgtSize < outSize) {
                 warn("Warning: The target size stored in the delta file is greater than the actual target size\n");
-                // TODO: Warnings as errors
+        }
+        
+        if (tgtSize < outSize && warnIsErr(args->flags)) {
+                free(outBuf);
+                closeMaybeRemove(outFile, args);
+                return EXIT_FAILURE;
         }
 
         // Writing the serialized output to a file.
@@ -468,11 +481,12 @@ int32_t reconstructTarget(struct Slurped *args)
                         warn("Warning: Target file's hash (SHA-256) did not equal the hash in the delta file\n");
                         info(" \\___ The file has been preserved, but it may or may not be corrupted\n");
                         info(" \\___ This warning can be suppressed using the --ignore-hash flag\n");
+                        // Don't need to check warnIsErr because we're already ending the program
                 }
         } else if (!(args->flags & IGNORE_HASH_FLAG)) {
                 warn("Warning: The target file's hash stored in the delta file was marked as null\n");
                 detail(" \\___ Verification of the file's hash has been skipped.\n");
-                // TODO: Warnings-as-errors flag
+                // Don't need to check warnIsErr because we're already ending the program
         } 
 
         // Cleaning up
