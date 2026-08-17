@@ -255,7 +255,6 @@ int32_t hydrateHeaderV1(const struct Slurped *args, struct Version1Header *v1)
         // padding is always serialized as 0xff in outputHeaderV1
 
         // Generating file hashes
-        // Generating a file hash for the target and source
         if (!(args->flags & IGNORE_HASH_FLAG)) {
                 // The target file
                 FILE *tgt = attemptRFileOpen(args->posArg2, args->posArg2Len);
@@ -310,12 +309,41 @@ int32_t hydrateHeaderV2(const struct Slurped *args, struct Version2Header *v2,
 
         // Generating file hashes
         // FIXME: We don't currently support file hashing here, so we default to ignore
-        debug("Ignore hash flag: %08x\n", args->flags & IGNORE_HASH_FLAG);
-        if (1 || (args->flags & IGNORE_HASH_FLAG)) {
-                loud("Warning: Ignoring hash generation for source and target files\n");
-                info(" \\___ The reconstructed target could possibly be silently corrupted as a result\n");
-                // TODO: Warnings-as-errors flag
+        
+        // Generating a file hash for the target and source
+        if (!(args->flags & IGNORE_HASH_FLAG)) {
+                // The target file
+                FILE *tgt = attemptRFileOpen(args->posArg2, args->posArg2Len);
+                if (tgt == NULL) {
+                        verbose("Cancelled header write\n");
+                        return EXIT_FAILURE;
+                }
+
+                info("Computing file hash for the target...\n");
+                if (computeFileHash(&v2->targetHash, tgt) == 0) {
+                        verbose("Cancelled header write\n");
+                        fclose(tgt);
+                        return EXIT_FAILURE;
+                }
+                fclose(tgt); // Doesn't really matter if this fails
+
+                // The source file
+                FILE *src = attemptRFileOpen(args->posArg1, args->posArg1Len);
+                if (src == NULL) {
+                        verbose("Cancelled header write\n");
+                        fclose(tgt); // Doesn't matter if it fails
+                        return EXIT_FAILURE;
+                }
+
+                info("Computing file hash for the source...\n");
+                if (computeFileHash(&v2->sourceHash, src) == 0) {
+                        verbose("Cancelled header write\n");
+                        fclose(src); // Doesn't really matter if this fails
+                        return EXIT_FAILURE;
+                }
+                fclose(src); // Doesn't really matter if this fails
         }
+
 
         return EXIT_SUCCESS;
 }

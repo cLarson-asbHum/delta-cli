@@ -390,6 +390,20 @@ uint64_t reconstructFromArgs(const struct Slurped *args, uint8_t *outBuf,
         return tgtSize;
 }
 
+union Sha256 *findTgtHash(struct DeltaHeader *header) 
+{
+        switch (header->versionId) {
+        case 1:
+        case 2:
+                // The two versions' hashes are in the same space
+                return &header->header.v1.targetHash;
+        default:
+                // Should've been caught earlier, but Murphy's Law knows no bounds
+                error("Garbage state: Version %d is not a valid version (min: 1, max: %d)\n",
+                        header->versionId, CURRENT_VERSION);
+                return NULL;
+        }
+}
 
 // Returns EXIT_SUCCESS if the target was successfully reconstructed and 
 // outputted; returns EXIT_FAILURE otherwise
@@ -477,10 +491,9 @@ int32_t reconstructTarget(struct Slurped *args)
         }
         
         // Verifying the hash of the reconstructed file
-        const union Sha256 *expHash = &header.header.v1.targetHash;
+        const union Sha256 *expHash = findTgtHash(&header);
         const union Sha256 nullHash = NULL_SHA;
         if (!(args->flags & IGNORE_HASH_FLAG) && !hashesEqual(expHash, &nullHash)) {
-                // TODO: When format version control is done, use that for exp hash
                 union Sha256 reconHash;
                 info("Verifying the hash (SHA-256) of our reconstructed file...\n");
 
