@@ -87,6 +87,40 @@ struct Command *nextLargestMove(const uint8_t *source, uint64_t srcStart,
 // tgtMaxCount - maximum length of the prefix, in number of words
 struct Command *nextLargest64Move(const uint64_t *source, uint64_t srcLen, 
         const uint64_t *target, uint64_t tgtMaxCount);
+        
+// Specifies an array of uints whose byte width is specified by the parameter.
+// The length of the array itself is not self-specified.
+struct UintNArray {
+        uint8_t *bytes; // Number of bytes must be a multiple of byteWidth
+        uint8_t byteWidth; // How many bytes each uint element takes up. Min=1; max=8
+};
+
+// Reads a uint from the specified UintNArray. Return is undefined if the index
+// is out of bounds or if the byteWidth is not between 1 and 8 (inclusive)
+// i is the uint index, not the byte index (i.e. `bytes[byteWidth * i]` rather 
+// than `bytes[i]`).
+uint64_t readUint(const struct UintNArray *arr, uint64_t i);
+
+// Computes the largest block move under the assumption that the indices are 
+// sorted by ascending value of the source symbols. For example, suppose the 
+// symbols (as values) in source are `{ 1, 5, 4, 3 }`; the srcIndices for this
+// source would be `{ 0, 3, 2, 1 }` because source[0] < source[3] < source[2] 
+// < source[1]. The number of indices in srcIndices is assumed to be equal to 
+// srcLen
+//
+// If the byteWidth member of srcIndices is not between 1 and 8 (inclusive),
+// this returns null.
+//
+// This does not validate that srcIndices are actually sorted nor that they 
+// point to elements in source; both are assumed, and behavior is undefined 
+// otherwise.
+//
+// Unless noted above, this behaves identical to nextLargest64Move() in regards
+// to parameters, error states, return values.
+struct Command *nextLargest64Sorted(const uint64_t *source, 
+        const struct UintNArray *srcIndices, uint64_t srcLen, 
+        const uint64_t *target, uint64_t tgtMaxCount);
+        
 
 #define GARBAGE_PATCH_SIZE UINT64_MAX
 

@@ -128,6 +128,124 @@ struct Command *nextLargest64Move(const uint64_t *source, uint64_t srcLen,
         return result;
 }
 
+uint64_t readUint(const struct UintNArray *arr, uint64_t i) 
+{
+        const uint8_t w = arr->byteWidth;
+        uint64_t ret = 0;
+        for (int j = 0; j < w; j++) {
+                ret |= arr->bytes[w * i + j] << (8 * j);
+        }
+        return ret;
+}
+
+// Performs a binary search for the specified element, using an array of indexes 
+// into another array. If the element is not found, the index where it *would* 
+// be is returned. If the element is repeated within the array, the index to 
+// the first repetition is returned. The output range is [0, arrLen].
+//
+// Overflow of the search index is not properly handled, and as such care should 
+// be made that the length of the array is less than `UINT64_MAX / 2`.
+uint64_t searchSorted(const uint64_t *arr, const struct UintNArray *indices, 
+        uint64_t arrLen, uint64_t elem) 
+{
+        uint64_t left = 0; // Inclusive
+        uint64_t right = arrLen; // Exclusive
+        uint64_t mid; 
+        uint64_t cur;
+        
+        while (left < right) {
+                mid = (right - 1 + left) / 2; // Please don't overflow!!1!
+                cur = arr[readUint(indices, mid)];
+
+                if (cur >= elem) {
+                        // We overshot the target element
+                        // We include the equality case, as we want the left-most 
+                        // repetition of elem (if there are repetitions)
+                        right = mid;
+                } else {
+                        // We undershot the target element
+                        left = mid + 1;
+                }
+        }
+
+        // The two bounds are equal by this point
+        return left;
+}
+
+// Computes the largest block move under the assumption that the indices are 
+// sorted by ascending value of the source symbols. For example, suppose the 
+// symbols (as values) in source are `{ 1, 5, 4, 3 }`; the srcIndices for this
+// source would be `{ 0, 3, 2, 1 }` because source[0] < source[3] < source[2] 
+// < source[1]. 
+//
+// If srcIndices is NULL or its byteWidth member is not between 1 and 8 
+// (inclusive), this returns NULL.
+//
+// This does not validate that srcIndices are actually sorted nor that they 
+// point to elements in source; both are assumed, and behavior is undefined 
+// otherwise.
+//
+// Unless noted above, this behaves identical to nextLargest64Move() in regards
+// to parameters, error states, return values.
+struct Command *nextLargest64Sorted(const uint64_t *source, 
+        const struct UintNArray *srcIndices, uint64_t srcLen, 
+        const uint64_t *target, uint64_t tgtMaxCount) 
+{
+        if(srcLen <= 0 || srcLen > (UINT64_MAX / 8) || tgtMaxCount <= 0) {
+                return NULL;
+        }
+        
+        // Finding the maximal l and its corresponding p
+        uint64_t p = 0; // Index to a uint64_t, not a byte, in src
+        uint64_t l = 0; // Length of the move (0 if addition), in uints (not bytes)
+
+        // Searching in source for the target prefix
+        // Note that we limit srcLen to `UINT8_MAX / 8` uint64s (2.00 Exbibytes)
+        uint64_t sortedI = searchSorted(source, srcIndices, srcLen, target[0]);
+        uint64_t pCur = readUint(srcIndices, sortedI);
+
+        // Iterating over each duplicate of our prefix
+        while(pCur < srcLen && l < tgtMaxCount && source[pCur] == target[0]) {
+                // Getting the largest shared substring we can starting at pCur
+                uint64_t lCur = 1; // At least one (outer loop would've exited otherwise)
+                while (pCur + lCur < srcLen && lCur < tgtMaxCount
+                        && source[pCur + lCur] == target[lCur])
+                {
+                        lCur++;
+                }
+
+                if (lCur > l) {
+                        // New maximum found
+                        l = lCur;
+                        p = pCur;
+                }
+
+                // Going to the next sorted repetition.
+                sortedI++;
+                pCur = readUint(srcIndices, sortedI);
+        }
+
+        // Formatting our result as a command
+        // NOTE: The return of this method MUST be freed.
+        struct Command *result = malloc(sizeof(struct Command));
+        if(l == 0) {
+                result->type = ADD_64_COMMAND;
+                
+                // NOTE: Consumers MUST override the value of tgtIndex
+                result->cmd.add64.tgtIndex.longVal = 0;
+                result->cmd.add64.symbol64 = target[0];
+        } else {
+                result->type = MOVE_COMMAND;
+                
+                // NOTE: Consumers MUST override the value of tgtIndex
+                result->cmd.move.tgtIndex.longVal = 0;
+                result->cmd.move.srcIndex.longVal = 8 * p;
+                result->cmd.move.len.longVal = 8 * l;
+        }
+
+        return result;
+}
+
 uint64_t patchSizeOf(const struct Command *command) {
         uint8_t commandType = command->type; // Might be garbage
         switch (commandType) {
