@@ -95,11 +95,26 @@ struct UintNArray {
         uint8_t byteWidth; // How many bytes each uint element takes up. Min=1; max=8
 };
 
+// Calculates the minimum number of bytes necessary to store the given value. 
+// The return value is **always** between 1 and 8, inclusive. If x is 0, this 
+// returns 1.
+uint8_t calcWidth(uint64_t x);
+
 // Reads a uint from the specified UintNArray. Return is undefined if the index
-// is out of bounds or if the byteWidth is not between 1 and 8 (inclusive)
+// is out of bounds or if the byteWidth is not between 1 and 8 (inclusive).
 // i is the uint index, not the byte index (i.e. `bytes[byteWidth * i]` rather 
-// than `bytes[i]`).
+// than `bytes[i]`). This assumes that the bytes are in little-endian order
 uint64_t readUint(const struct UintNArray *arr, uint64_t i);
+
+
+// Writes a uint val to the specified UintNArray, returning the number of bytes 
+// written. The bytes of val are written in little-endian order. 
+// 
+// Behavior is undefined if the index is out of bounds or if the byteWidth is 
+// not between 1 and 8 (inclusive). i is the uint index, not the byte index 
+// (i.e. `bytes[byteWidth * i]` rather  than `bytes[i]`).
+uint8_t writeUint(struct UintNArray *arr, uint64_t i, uint64_t val);
+
 
 // Computes the largest block move under the assumption that the indices are 
 // sorted by ascending value of the source symbols. For example, suppose the 
