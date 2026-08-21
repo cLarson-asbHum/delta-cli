@@ -204,7 +204,7 @@ uint64_t computeCmds64(const struct FileBin *s, const struct FileBin *t,
 //  > Algorithm Implementation/Sorting/Quicksort. (2025, December 21). Wikibooks. 
 //  > Retrieved August 19, 2026, from 
 //  > https://en.wikibooks.org/w/index.php?title=Algorithm_Implementation/Sorting/Quicksort&oldid=4608421.
-void sortIndices(const uint64_t *arr, struct UintNArray *indices, int64_t beg, 
+void sortIndices(const uint8_t *arr, struct UintNArray *indices, int64_t beg, 
         int64_t end)
 {
         uint64_t piv; // Quicksort pivot
@@ -222,17 +222,17 @@ void sortIndices(const uint64_t *arr, struct UintNArray *indices, int64_t beg,
                 r = end;
 
                 // TODO: Decide if a faster pivot would help
-                piv = arr[readUint(indices,p)];
+                piv = READ_64(arr[readUint(indices,p)]);
 
                 // Swapping smaller elems to the left, and larger to the right
                 while (1) {
                         // Skip over any elements that are already on the correct
                         // side of the pivot.
-                        while ((l <= r) && (arr[readUint(indices,l)] <= piv)) {
+                        while ((l <= r) && (READ_64(arr[readUint(indices,l)]) <= piv)) {
                                 l++;
                         }
                         
-                        while ((l <= r) && (arr[readUint(indices,r)] > piv)) {
+                        while ((l <= r) && (READ_64(arr[readUint(indices,r)]) > piv)) {
                                 r--;
                         }
 
@@ -271,33 +271,12 @@ void sortIndices(const uint64_t *arr, struct UintNArray *indices, int64_t beg,
         }
 }
 
-void populateIndices(struct UintNArray *indices, uint8_t byteWidth, uint64_t len) 
+void populateIndices(struct UintNArray *indices, uint64_t len) 
 {
         for (uint64_t i = 0; i < len; i++) {
                 // TODO: Make writeUint() fast
                 writeUint(indices, i, i);
         }
-}
-
-// Moves the highest value in arr to the right end of the array. This returns 
-// the index that the highest value was at.
-uint64_t moveHighestRight(struct UintNArray *arr, uint64_t len)
-{
-        uint64_t max = readUint(arr, 0);
-        uint64_t maxI = 0;
-
-        for (uint64_t i = 1; i < len; i++) {
-                const uint64_t cur = readUint(arr, i);
-                if (cur > max) {
-                        max = cur;
-                        maxI = i;
-                }
-        }
-
-        const uint64_t tmp = readUint(arr, len - 1);
-        writeUint(arr, len - 1, max);
-        writeUint(arr, maxI, tmp);
-        return maxI;
 }
 
 // Computes MOVE, ADD, and ADD_64 commands. If the lengths of s and t are not 
@@ -311,25 +290,21 @@ uint64_t moveHighestRight(struct UintNArray *arr, uint64_t len)
 // O(m log m); Quicksort is used to guarantee that the list is sorted. The 
 // average time complexity of this algorithm is Ω((m + n) log m) where m is 
 // the number of uint64s in the target, and n is the number of uints64s in the 
-// source. The worst case is O(m n), however this occurs in very specific cases,
-// and can be disregarded. 
+// source.
 //
 // The memory usage of this function is greater larger than computeCmds64() 
-// because extra memory is allocated to store sorted indices as well as 
-// preserve working srcIndex and len between 
+// because extra memory is allocated to store sorted indices.
 uint64_t computeCmds64Q(const struct FileBin *s, const struct FileBin *t, 
         uint64_t tStart, struct LinkedCommand *head) 
 {
-        if (s->size < 8) {
-                return 0;
-        }
-
-        const uint64_t sLen = s->size / 8; // Number of 64-bit words in s
-        const uint8_t w = calcWidth(sLen); // Byte width of each index
+        const uint64_t sLen = s->size;
+        const uint64_t *t64 = (uint64_t *) t->buf;
+        const uint64_t t64Size = t->size >> 3;
         struct LinkedCommand *last = head; // Where commands are appended
 
+        // Initializing our indices used for sorting
         detail(" \\___ Initializing indices for sorting...\n");
-        struct UintNArray sorted = { .bytes = NULL, .byteWidth = w };
+        struct UintNArray sorted = { .bytes = NULL, .byteWidth = calcWidth(sLen) };
         sorted.bytes = malloc(sLen * sorted.byteWidth * sizeof(uint8_t));
 
         if (sorted.bytes == NULL) {
@@ -338,49 +313,65 @@ uint64_t computeCmds64Q(const struct FileBin *s, const struct FileBin *t,
                 return 0;
         }
 
-        populateIndices(&sorted, w, sLen);
+        populateIndices(&sorted, sLen);
+        sortIndices(s->buf, &sorted, 0, sLen - 1);
 
-        // The 8 first rounds discover all possible commands; the next 8 refine 
-        // them so that they maximize the total substring coverage
-        uint64_t lastLen = sLen; // Used for repopulating the array
+        // Computing our commands (but FASTER 🤘)
+        uint64_t q = tStart;
         uint64_t outSize = 0;
-        for (uint8_t round = 0; round < 16; round++) {
-                loud(" \\___ [%d / %d] Computation round\n", round + 1, 16);
+        while (q + 7 < t->size && sLen != 0) {
+                info(" \\___ %llu / %llu (%.2f%%)\n", q, t->size, 
+                        100.0f * (float) q / (float) t->size);
 
-                // Sorting the indices with a frame shift
-                info("   \\___ Sorting indices (step 1 / n)...\n"); // TODO: n
-                const uint8_t kernelShift = round % 8; // bytes, not 64-bit words
-                const uint64_t shiftLen = (s->size - kernelShift) / 8;
-                const uint64_t *sShift = (uint64_t *) &(s->buf[kernelShift]);
+                // WARNING: We assume that command is never NULL, which assumes
+                //          that computeCmds was bound checked before its invocation
+                struct Command *command = nextLargest64Sorted(s->buf, &sorted, 
+                        sLen, &t64[q / 8], t64Size - (q / 8));
 
-                if (shiftLen < lastLen) {
-                        detail("     \\___ Ensuring we have the correct indices...\n");
-                        uint64_t tmp = moveHighestRight(&sorted, sLen);
-                        debug("     \\___ Moved the %llu-th index to the maximum position\n", tmp);
+                switch (command->type) {
+                case ADD_COMMAND:
+                        command->cmd.add.tgtIndex.longVal = q;
+                        break;
+                case MOVE_COMMAND:
+                        command->cmd.move.tgtIndex.longVal = q;
+                        break;
+                case ADD_64_COMMAND:
+                        command->cmd.add64.tgtIndex.longVal = q;
+                        break;
+                // We don't include a default, as it can never fail (see WARNING above)
+                }
+                
+                verboseCmdLog(command);
+                q += patchSizeOf(command);
+                outSize += serialSizeOf(command);
+
+                // Verifying that we only could've landed on a multiple of 8
+                if ((q & 7) != 0) {
+                        error("Garbage state while computing delta: Index in target did not cleanly land on a uint64_t (index was %llu)\n",
+                                q);
+                        freeLinked(head->next);
+                        free(sorted.bytes);
+                        head->next = NULL;
+                        return 0;
                 }
 
-                sortIndices(sShift, &sorted, 0, shiftLen - 1);
-
-                // TODO: nextLargestMove() over each command
-
-                // TODO: nextLargestMove() for new commands
-
-                // TODO: Remove unreachable commands
+                // Appending our command to the end of a singly-linked list.
+                // We add to the last elem rather than the head in order to
+                // have first-in-first-out iteration.
+                struct LinkedCommand *append = malloc(sizeof(struct LinkedCommand));
+                append->elem = command;
+                append->next = NULL;
+                last->next = append; // Appending our node onto the last node
+                last = append; // Making our node the last node.
         }
 
-        // Getting any bytes of target that we missed because of our uint64 kernel
-        if ((t->size & 7) != 0 && s->size != 0) {
-                const uint64_t t64Start = t->size - (t->size & 7);
+        // Handling any uncompared bytes at the end
+        if ((t->size & 7) != 0 && sLen != 0) {
                 debug("Parsing the end %d bytes of T separately\n", t->size & 7);
-                debug(" \\___ Starting at index %llu of T\n", t64Start);
-                outSize += computeCmds(s, t, t64Start, last);
+                debug(" \\___ Starting at index %llu of T\n", t64Size << 3);
+                outSize += computeCmds(s, t, t64Size << 3, last);
         }
-        
-        // Choosing the minimal covering of the commands
-        // TODO: Select the result commands and CALCULATE OUTSIZE
 
-        // TODO: Convert and optimize commands (post-processing)
-        // Cleaning up
         free(sorted.bytes);
         return outSize;
 }

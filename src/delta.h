@@ -14,6 +14,9 @@
 #include <stdint.h>
 #include "hash.h"
 
+// Reads the address of X, and dereferences it as a uint64_t
+#define READ_64(X) ( *((uint64_t *) &(X)) )
+
 union SerialLong {
         uint64_t longVal;
         uint8_t bytes[8];
@@ -132,8 +135,8 @@ uint8_t writeUint(struct UintNArray *arr, uint64_t i, uint64_t val);
 //
 // Unless noted above, this behaves identical to nextLargest64Move() in regards
 // to parameters, error states, return values.
-struct Command *nextLargest64Sorted(const uint64_t *source, 
-        const struct UintNArray *srcIndices, uint64_t srcLen, 
+struct Command *nextLargest64Sorted(const uint8_t *source, 
+        const struct UintNArray *srcIndices, uint64_t srcBytes, 
         const uint64_t *target, uint64_t tgtMaxCount);
         
 
