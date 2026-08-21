@@ -388,6 +388,9 @@ enum SlurpErr slurpArgs(struct Slurped *out, int32_t argc, char **argv)
         out->outputLen = 0;
         out->posArg1Len = 0;
         out->posArg2Len = 0;
+        out->outputFileName = NULL;
+        out->posArg1 = NULL;
+        out->posArg2 = NULL;
 
         if (argc == 1 || argc >= LOOP_MAX) {
                 out->flags = (out->flags | HELP_FLAG);

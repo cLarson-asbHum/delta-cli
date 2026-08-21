@@ -214,11 +214,21 @@ void sortIndices(const uint8_t *arr, struct UintNArray *indices, int64_t beg,
         uint64_t r; // Right comparison index (for when we swap based on the pivot)
         uint64_t p; // Index of the pivot
 
+        double rt;
+
         // TODO: Figure out why changing the beg and end types to uint64_t 
         //       causes the comparison to change their values. It might be a compiler error
         while (beg < end) { // This while loop will avoid the second recursive call
+                //#region DEV START: Logging recursion
+                uint8_t didLog = 0;
+                if ((end - beg + 1) / 1024 > 100) {
+                        debug("[size=%llu KiB] ", (end - beg + 1) / 1024);
+                        didLog = 1;
+                }
+                //#endregion DEV END
+                
                 l = beg;
-                p = (end + beg) / 2;
+                p = (end + beg) / 2; // TODO: Make this random (we keep getting stuck)
                 r = end;
 
                 // TODO: Decide if a faster pivot would help
@@ -268,9 +278,32 @@ void sortIndices(const uint8_t *arr, struct UintNArray *indices, int64_t beg,
                         sortIndices(arr, indices, l, end);
                         end = r;
                 }
+                //#region DEV START: Logging "recursion"
+                if (didLog) {
+                        debug("[fin]");
+                }
+                //#endregion DEV END
         }
+
 }
 
+// Returns 1 if any index in sorted is out of order; 0 otherwise (or length is 
+// less than 2)
+uint64_t notSorted(const uint8_t *arr, const struct UintNArray *indices, 
+        uint64_t len) 
+{
+        uint64_t last = READ_64(arr[readUint(indices, 0)]);
+        for (uint64_t i = 1; i < len; i++) {
+                const uint64_t cur = READ_64(arr[readUint(indices, i)]);
+                if(cur < last) {
+                        error("Garbage state: Sorted indices using quicksort, yet index %llu was still out of place\n", 
+                                i);
+                        return 1;
+                }
+        }
+        return 0;
+}
+ 
 void populateIndices(struct UintNArray *indices, uint64_t len) 
 {
         for (uint64_t i = 0; i < len; i++) {
@@ -313,8 +346,17 @@ uint64_t computeCmds64Q(const struct FileBin *s, const struct FileBin *t,
                 return 0;
         }
 
+        info(" \\___ Populating indices for sorting...\n");
         populateIndices(&sorted, sLen);
+        loud(" \\___ Sorting indices to our file... (this takes a long time)\n");
+        // sortIndices(s->buf, &sorted, 0, sLen - 1);
         sortIndices(s->buf, &sorted, 0, sLen - 1);
+
+        verbose(" \\___ Verifying sortedness...\n");
+        if(notSorted(s->buf, &sorted, sLen)) {
+                free(sorted.bytes);
+                return 0;
+        }
 
         // Computing our commands (but FASTER 🤘)
         uint64_t q = tStart;

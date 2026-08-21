@@ -128,7 +128,7 @@ struct Command *nextLargest64Move(const uint64_t *source, uint64_t srcLen,
 uint8_t calcWidth(uint64_t x) 
 {
         for (uint8_t byteShift = 1; byteShift < 8; byteShift++) {
-                if (x < (1 << (8 * byteShift))) {
+                if (x < (1ull << (8 * byteShift))) {
                         return byteShift;
                 }
         }
@@ -139,14 +139,14 @@ uint8_t calcWidth(uint64_t x)
 uint64_t readUint(const struct UintNArray *arr, uint64_t i) 
 {
         const uint8_t w = arr->byteWidth;
-        return READ_64(arr->bytes[w * i]) & ((1 << (8 * w)) - 1);
+        return READ_64(arr->bytes[w * i]) & ((1ull << (8 * w)) - 1ull);
 }
 
 uint8_t writeUint(struct UintNArray *arr, uint64_t i, uint64_t val) 
 {
-        const uint8_t w = arr->byteWidth;
+        const uint64_t w = arr->byteWidth;
         for (uint64_t j = 0; j < w; j++) {
-                arr->bytes[w * i + j] = (val >> (8 * j)) & 0xff;
+                arr->bytes[w * i + j] = (val >> (8 * j)) & 0xffull;
         }
         return w;
 }

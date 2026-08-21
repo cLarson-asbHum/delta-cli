@@ -66,7 +66,7 @@ FILE *createWFile(char *filename)
 {
         FILE *file = fopen(filename, "wb");
         if (file == NULL) {
-                error("Error while creating file: Could not create file \"s\" for writing\n",
+                error("Error while creating file: Could not create file \"%s\" for writing\n",
                         filename);
                 return NULL;
         }
