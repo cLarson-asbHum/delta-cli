@@ -6,6 +6,7 @@
 #include "file-helper.h"
 #include "delta-command.h"
 #include "reconstruct-command.h"
+#include "musl-rand.h"
 
 // a million, or 'round-about there
 #define LOOP_MAX 1000000
@@ -44,7 +45,6 @@ int32_t displayVersion()
         return printf("delta-cli 1.1.0 | Connor Larson, 2026 | MIT license\n");
 }
 
-
 int32_t main(int32_t argc, char **argv) 
 {
         // Parsing arguments if they're available
@@ -53,6 +53,7 @@ int32_t main(int32_t argc, char **argv)
                 return EXIT_FAILURE; // Unreachable
         }
 
+        musl_srand(0xba115u);
         loud("\n");
         struct Slurped *slurpedPtr = malloc(sizeof(struct Slurped));
         const enum SlurpErr slurpErr = slurpArgs(slurpedPtr, argc, argv);

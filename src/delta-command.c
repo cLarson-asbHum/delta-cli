@@ -7,6 +7,7 @@
 #include "delta.h"
 #include "file-helper.h"
 #include "hash.h"
+#include "musl-rand.h"
 
 #define V1_COMPAT_OFFSET 0
 
@@ -222,17 +223,22 @@ void sortIndices(const uint8_t *arr, struct UintNArray *indices, int64_t beg,
                 //#region DEV START: Logging recursion
                 uint8_t didLog = 0;
                 if ((end - beg + 1) / 1024 > 100) {
-                        debug("[size=%llu KiB] ", (end - beg + 1) / 1024);
+                        // debug("[size=%llu KiB] ", (end - beg + 1) / 1024);
                         didLog = 1;
                 }
                 //#endregion DEV END
                 
                 l = beg;
-                p = (end + beg) / 2; // TODO: Make this random (we keep getting stuck)
+                // p = (end + beg) / 2; // TODO: Make this random (we keep getting stuck)
+                rt = ((double) musl_rand()) / INT32_MAX; // Maximum of 2**31 sourced from Wikipedia article for LCGs
+                p = beg + (uint64_t) (rt * (end - beg));
                 r = end;
-
+                
                 // TODO: Decide if a faster pivot would help
                 piv = READ_64(arr[readUint(indices,p)]);
+                if (didLog) {
+                        debug("[p = %llu (KiB)]", p / 1024);
+                }
 
                 // Swapping smaller elems to the left, and larger to the right
                 while (1) {
